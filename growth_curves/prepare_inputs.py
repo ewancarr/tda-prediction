@@ -28,34 +28,28 @@ import matplotlib.pyplot as plt
 all_weeks, merged = load('data/merged.joblib')
 outcomes = load('data/outcomes.joblib')
 
-# Reshape repeated measures data from wide to long 
+# Reshape repeated measures data from wide to long ----------------------------
+stubs = np.unique([i[0] for i in all_weeks.columns])
+lf = pd.melt(all_weeks, ignore_index=False)
+lf.columns = ['measure', 'week', 'value']
 
-stubs = np.unique([i[:-4] 
-           for i in all_weeks.drop(labels='subjectid', axis=1).columns])
-dlong = pd.wide_to_long(all_weeks,
-                        stubnames=stubs,
-                        i='subjectid',
-                        suffix='w[0-9]+',
-                        sep='_',
-                        j='t').reset_index()
-dlong['week'] = [int(i[1:]) for i in dlong['t']]
-
-# Create list containing all measures/weeks
-m = dlong['week'].max()
+# Create list containing all measures/weeks -----------------------------------
+m = lf['week'].max()
 opts = []
-for max_weeks in range(2, m + 1):
-    for label, content in dlong.drop(labels='t',
-                                     axis=1).set_index(['subjectid',
-                                                        'week']).items():
-        values = content.copy().reset_index().dropna()
-        # This is where we're setting the 'maximum number of weeks'
-        # 0 = baseline, so 4 = baseline + weeks 1, 2, 3, 4 = 5 weeks total.
-        values = values[values.week <= max_weeks]
-        opts.append({'max_weeks': max_weeks,
-                     'label': label,
-                     'values': values})
+for mw in range(2, m + 1):
+    for s in stubs:
+        val = lf[(lf.measure == s) &
+                 (lf.week <= mw)].iloc[:, 1:3].reset_index()
+        val.columns = ['subjectid', 'week', s]
+        opts.append({'max_weeks': mw,
+                     'label': s,
+                     'values': val})
 
-# Save each option to disk
+# Delete old versions ---------------------------------------------------------
+for f in Path('growth_curves/inputs/').glob('**/*'):
+    f.unlink()
+
+# Save each option to disk ----------------------------------------------------
 index = {}
 for i, o in enumerate(opts):
     key = o['label'] + '_' + str(o['max_weeks'])

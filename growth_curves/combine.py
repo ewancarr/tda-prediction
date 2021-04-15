@@ -3,16 +3,17 @@
 
 import os
 from joblib import load, dump
+import pandas as pd
 
 # Load all growth curve parameters
 index = load('growth_curves/index.joblib')
 inputs = {}
-for k, v in tqdm(index.items()):
+for k, v in index.items():
     inputs[v] = load('growth_curves/outputs/' + str(k))
 
 # Create versions for increasing numbers of weeks
 vers = {}
-for mw in range(2, 15):
+for mw in range(2, 14):
     vers[mw] = pd.concat({k: v for k, v in inputs.items() 
                           if int(k.split('_')[1]) == mw},
                          axis=1)

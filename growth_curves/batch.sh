@@ -3,7 +3,7 @@
 #SBATCH --tasks=4
 #SBATCH --mem=4000
 #SBATCH --job-name=array
-#SBATCH --array=720-790
+#SBATCH --array=0-720
 #SBATCH --output=/scratch/users/%u/logs/%a.out
 #SBATCH --time=0-72:00
 module load apps/singularity
