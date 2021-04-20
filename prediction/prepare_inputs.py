@@ -71,7 +71,7 @@ from pathlib import Path
 inp = Path('data')
 outcomes = load(inp / 'outcomes.joblib')
 drug = load(inp / 'drug.joblib')
-baseline = load(inp / 'features.joblib')
+X, X2 = load(inp / 'features.joblib')
 repmea = load(inp / 'repmea.joblib')
 res, gc_params = load(inp / 're.joblib')
 all_weeks, merged = load(inp / 'merged.joblib')
@@ -95,31 +95,34 @@ mrg = {'left_index': True,
        'right_index': True}
 sets = {}
 # Baseline only
-sets['1_bl'] = baseline
+sets['1_bl'] = X            # Baseline features from datClin.csv
+sets['2_blplus'] = X2       # Plus week 0 of repeated measures data
 # Repeated measures only
-i = 2
+i = 3
 for k, v in rm.items():
     sets[str(i) + '_rm' + str(k)] = v
     i += 1
 # Repeated measures and baseline
 for k, v in rm.items():
-    sets[str(i) + '_rmbl' + str(k)] = v.merge(baseline, **mrg)
-    i += 1
+    for lab, bl in zip(['b1', 'b2'], [X, X2]):
+        sets[str(i) + '_rm' + lab + '_' + str(k)] = v.merge(bl, **mrg)
+        i += 1
 # Growth curves only
 for k, v in gc.items():
     sets[str(i) + '_gc' + str(k)] = v
     i += 1
 # Growth curves and baseline
 for k, v in gc.items():
-    sets[str(i) + '_gcbl' + str(k)] = v.merge(baseline, **mrg)
-    i += 1
+    for lab, bl in zip(['b1', 'b2'], [X, X2]):
+        sets[str(i) + '_gc' + lab + '_' + str(k)] = v.merge(bl, **mrg)
+        i += 1
 # Topological variables
 tda = {k: v for k, v in zip(['land', 'silo', 'betti'],
                             [landscapes, silouettes, betti])}
 for k, v in tda.items():
-    for bl in [True, False]:
-        if bl:
-            sets[str(i) + '_' + k + 'bl'] = v.merge(baseline, **mrg)
+    for lab, bl in zip(['b1', 'b2', None], [X, X2, None]):
+        if lab:
+            sets[str(i) + '_' + k + lab] = v.merge(bl, **mrg)
         else:
             sets[str(i) + '_' + k] = v
         i += 1
@@ -135,14 +138,15 @@ for k, v in tda.items():
 # Create two versions based on drug -------------------------------------------
 
 # Option A: escitalopram only, no drug variable
-# Option B: both drugs, include 'drug'
+# Option B: nordtrityline only, no drug variable
+# Option C: both drugs, include 'drug'
 pram = drug[drug['drug'] == 'escitalopram'].index
 drug['escital'] = drug['drug'] == 'escitalopram'
 by_drug = {}
 for k, v in sets.items():
     by_drug['A' + '_' + k] = v.loc[pram]
-    by_drug['B' + '_' + k] = drug[['escital']].merge(v, **mrg)
-
+    by_drug['B' + '_' + k] = v.drop(pram)
+    by_drug['C' + '_' + k] = drug[['escital']].merge(v, **mrg)
 
 # Export list of models/features to Excel -------------------------------------
 summary = {}
@@ -163,4 +167,3 @@ for i, (k, v) in enumerate(by_drug.items()):
     dump(v, filename='prediction/sets/' + str(i))
     index[i] = k
 dump(index, filename='prediction/index.joblib')
-
