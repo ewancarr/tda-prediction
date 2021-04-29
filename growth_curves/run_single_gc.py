@@ -11,9 +11,10 @@ import statsmodels.formula.api as smf
 import warnings
 
 def fit_gcm(p):
+    # Fit a linear growth curve model with quadratic terms
     mdf = smf.mixedlm(p['label'] + ' ~ week + np.power(week, 2)', 
-                      p['values'], 
-                      groups=p['values']['subjectid'], 
+                      p['values'].dropna(), # NOTE: dropping missing rows
+                      groups=p['values'].dropna()['subjectid'], 
                       re_formula='~ week + np.power(week, 2)')
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
