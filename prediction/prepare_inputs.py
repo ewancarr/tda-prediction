@@ -91,16 +91,18 @@ for mw in range(2, 14):
 
 # Define feature sets ---------------------------------------------------------
 
+# NOTE: keys must follow a common format: id_label_weeks
+
 mrg = {'left_index': True,
        'right_index': True}
 sets = {}
 # Baseline only
-sets['1_bl'] = X            # Baseline features from datClin.csv
-sets['2_blplus'] = X2       # Plus week 0 of repeated measures data
+sets['1_b1_NA'] = X         # Baseline features from datClin.csv
+sets['2_b2_NA'] = X2       # Plus week 0 of repeated measures data
 # Repeated measures only
 i = 3
 for k, v in rm.items():
-    sets[str(i) + '_rm' + str(k)] = v
+    sets[str(i) + '_rm_' + str(k)] = v
     i += 1
 # Repeated measures and baseline
 for k, v in rm.items():
@@ -109,7 +111,7 @@ for k, v in rm.items():
         i += 1
 # Growth curves only
 for k, v in gc.items():
-    sets[str(i) + '_gc' + str(k)] = v
+    sets[str(i) + '_gc_' + str(k)] = v
     i += 1
 # Growth curves and baseline
 for k, v in gc.items():
@@ -120,19 +122,19 @@ for k, v in gc.items():
 tda = {k: v for k, v in zip(['land', 'silo', 'betti'],
                             [landscapes, silouettes, betti])}
 for k, v in tda.items():
-    for lab, bl in zip(['b1', 'b2', None], [X, X2, None]):
-        if lab:
-            sets[str(i) + '_' + k + lab] = v.merge(bl, **mrg)
+    for lab, bl in zip(['b1', 'b2', 'NA'], [X, X2, None]):
+        if lab == 'NA':
+            sets[str(i) + '_' + k + '_NA'] = v
         else:
-            sets[str(i) + '_' + k] = v
+            sets[str(i) + '_' + k + lab + '_NA'] = v.merge(bl, **mrg)
         i += 1
 # COMBINED: Topological variables PLUS [repeated measures OR growth curves]
 for k, v in tda.items():
     for k2, v2 in rm.items():
-        sets[str(i) + '_comb_' + k + 'rm' + str(k2)] = v.merge(v2, **mrg) 
+        sets[str(i) + '_comb' + k + 'rm_' + str(k2)] = v.merge(v2, **mrg) 
         i += 1
     for k2, v2 in gc.items():
-        sets[str(i) + '_comb_' + k + 'gc' + str(k2)] = v.merge(v2, **mrg) 
+        sets[str(i) + '_comb' + k + 'gc_' + str(k2)] = v.merge(v2, **mrg) 
         i += 1
 
 # Create two versions based on drug -------------------------------------------
@@ -144,9 +146,12 @@ pram = drug[drug['drug'] == 'escitalopram'].index
 drug['escital'] = drug['drug'] == 'escitalopram'
 by_drug = {}
 for k, v in sets.items():
-    by_drug['A' + '_' + k] = v.loc[pram]
-    by_drug['B' + '_' + k] = v.drop(pram)
-    by_drug['C' + '_' + k] = drug[['escital']].merge(v, **mrg)
+    by_drug['A_' + k] = v.loc[pram]
+    by_drug['B_' + k] = v.drop(pram)
+    by_drug['C_' + k] = drug[['escital']].merge(v, **mrg)
+
+# Check keys are consistent
+print(pd.DataFrame(pd.Series(by_drug.keys()).str.split('_')).to_string())
 
 # Export list of models/features to Excel -------------------------------------
 summary = {}
