@@ -81,7 +81,7 @@ scorers = {'auc': 'roc_auc',
 i = sys.argv[1]
 n_rep = int(sys.argv[2])
 
-X = load('prediction/sets/' + str(i))
+X = load('prediction/sets/' + str(i))['data']
 y = load('data/outcomes.joblib')[['remit']]
 
 Xy = X.merge(y,
@@ -89,7 +89,7 @@ Xy = X.merge(y,
              right_index=True,
              how='left')         # 'left' is important here. It ensures we only
                                  # include outcome information for the sample
-                                 # defined in X (i.e. escitalopram or both).
+                                 # defined in X.
 
 X = Xy.drop(labels='remit', axis=1)
 y = Xy['remit'].values
