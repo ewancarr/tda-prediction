@@ -117,9 +117,6 @@ for drug in ['escitalopram', 'nortriptyline', 'both']:
 for k, v in sets_by.items():
     print(k, v['label'], len(v['id']))
 
-# Check counts
-baseline.value_counts(subset=['random', 'drug'])
-
 # Create binary measure of 'escitalopram'
 drug = baseline[['drug']].copy()
 drug.loc[:, 'escitalopram'] = drug['drug'] == 'escitalopram'
@@ -133,6 +130,14 @@ for k1, v1 in sets_by.items():
             dat = dat.merge(drug, left_index=True, right_index=True)
         samples[k1 + '_' + k2] = {'label': v1['label'],
                                   'data': dat}
+
+# Check counts
+mrg == {'left_index': True, 'right_index': True, 'how': 'left'}
+check = baseline. \
+        merge(drug, **mrg). \
+        merge(outcomes, **mrg). \
+        dropna(axis=0, subset=['remit'])
+check.value_counts(subset=['drug', 'random'])
 
 
 # Drop participants with missing outcome information --------------------------

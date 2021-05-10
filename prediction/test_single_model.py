@@ -6,7 +6,7 @@ from pathlib import Path
 from joblib import load, dump
 from sklearn.model_selection import RepeatedKFold
 from sklearn.metrics import recall_score
-from sklearn.linear_model import SGDClassifier
+from sklearn.linear_model import SGDClassifier, LogisticRegressionCV
 from sklearn.impute import KNNImputer
 from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import cross_validate
@@ -94,20 +94,37 @@ Xy = X.merge(y,
 X = Xy.drop(labels='remit', axis=1)
 y = Xy['remit'].values
 
-clf = make_pipeline(VarianceThreshold(),
-                    StandardScaler(),
-                    KNNImputer(n_neighbors=5),
-                    ensemble.RandomForestClassifier())
+# Fit in Python/Scikit
+
+clf_rf = make_pipeline(VarianceThreshold(),
+                       StandardScaler(),
+                       KNNImputer(n_neighbors=5),
+                       ensemble.RandomForestClassifier())
+
+clf_lr = make_pipeline(VarianceThreshold(),
+                       StandardScaler(),
+                       KNNImputer(n_neighbors=5),
+                       LogitNet())
 
 rkf = RepeatedKFold(n_splits=10, 
                     n_repeats=n_rep, 
                     random_state=42)
 
-fit = cross_validate(clf,
-                     X=X,
-                     y=y,
-                     scoring=scorers,
-                     cv=rkf,
-                     n_jobs=-1)
+fit = {}
+for f, label in zip([clf_rf, clf_lr],
+        ['random_forest', 'logit_net']):
+    fit[label] = cross_validate(f,
+                                X=X,
+                                y=y,
+                                scoring=scorers,
+                                cv=rkf,
+                                n_jobs=-1)
 
 dump(fit, filename = 'prediction/fits/' + str(i))
+
+# Fit in R/glmnet
+
+CONTINUE HERE
+
+X.to_csv('prediction/scratch/' + str(i) + '_X.csv')
+pd.DataFrame({'y': y}).to_csv('prediction/scratch/' + str(i) + '_y.csv')
