@@ -17,14 +17,13 @@ inp = Path('data')
 outcomes = load(inp / 'outcomes.joblib')
 baseline = load(inp / 'baseline.joblib')
 repmea = load(inp / 'repmea.joblib')
-# res, gc_params = load(inp / 're.joblib')
 all_weeks, merged = load(inp / 'merged.joblib')
 landscapes, silouettes, betti = load(inp / 'topological_variables.joblib')
 
 # Load growth curve parameters ------------------------------------------------
 gc = {}
 for mw in range(2, 13):
-    gc[mw] = load('prediction/inputs/re_' + str(mw))
+    gc[mw] = load('prediction/re_params/re_' + str(mw))
     gc[mw].columns = [i[0] + '_' + i[1].split('_')[1] for i in gc[mw].columns]
 
 # Define sets of 'RAW' repeated measures --------------------------------------
@@ -41,7 +40,7 @@ mrg = {'left_index': True,
        'right_index': True}
 sets = {}
 # Baseline only
-bl = baseline.drop(labels=['random', 'drug'], axis=1).copy()
+bl = baseline.copy()
 sets['1_baseline'] = bl
 # Repeated measures only
 i = 2
@@ -52,14 +51,14 @@ for k, v in rm.items():
 for k, v in rm.items():
     sets[str(i) + '_rmbl_' + str(k)] = v.merge(bl, **mrg)
     i += 1
-# # Growth curves only
-# for k, v in gc.items():
-#     sets[str(i) + '_gc_' + str(k)] = v
-#     i += 1
-# # Growth curves and baseline
-# for k, v in gc.items():
-#     sets[str(i) + '_gcbl_' + str(k)] = v.merge(bl, **mrg)
-#     i += 1
+# Growth curves only
+for k, v in gc.items():
+    sets[str(i) + '_gc_' + str(k)] = v
+    i += 1
+# Growth curves and baseline
+for k, v in gc.items():
+    sets[str(i) + '_gcbl_' + str(k)] = v.merge(bl, **mrg)
+    i += 1
 # Topological variables
 tda = {k: v for k, v in zip(['land', 'silo', 'betti'],
                             [landscapes, silouettes, betti])}
@@ -70,14 +69,14 @@ for k, v in tda.items():
         else:
             sets[str(i) + '_' + k + lab] = v.merge(dat, **mrg)
         i += 1
-# # COMBINED: Topological variables PLUS [repeated measures OR growth curves]
-# for k, v in tda.items():
-#     for k2, v2 in rm.items():
-#         sets[str(i) + '_comb' + k + 'rm_' + str(k2)] = v.merge(v2, **mrg) 
-#         i += 1
-#     for k2, v2 in gc.items():
-#         sets[str(i) + '_comb' + k + 'gc_' + str(k2)] = v.merge(v2, **mrg) 
-#         i += 1
+# COMBINED: Topological variables PLUS [repeated measures OR growth curves]
+for k, v in tda.items():
+    for k2, v2 in rm.items():
+        sets[str(i) + '_comb' + k + 'rm_' + str(k2)] = v.merge(v2, **mrg) 
+        i += 1
+    for k2, v2 in gc.items():
+        sets[str(i) + '_comb' + k + 'gc_' + str(k2)] = v.merge(v2, **mrg) 
+        i += 1
 
 # Create multiple versions, based on randomisation/drug -----------------------
 
@@ -113,11 +112,16 @@ for k1, v1 in sets_by.items():
 
 
 # Drop participants with missing outcome information --------------------------
-
 has_outcome = outcomes['remit'].dropna().index
 for k, v in samples.items():
     v['data'] = v['data'].loc[v['data'].index.intersection(has_outcome)]
-    print(k, v['label'], np.shape(v['data']))
+
+# Check that all samples have 0/1 on outcome ----------------------------------
+check = {}
+for k, v in samples.items():
+    y = v['data'].merge(outcomes, left_index=True, right_index=True)['remit']
+    check[k] = [int(y.sum()), len(y)]
+pd.DataFrame(check).T.to_csv('outcome_check.csv')
 
 # Export list of models/features to Excel -------------------------------------
 summary = {}
@@ -129,6 +133,7 @@ for k, v in samples.items():
                   'feat': ' '.join(v['data'].columns.to_flat_index().str.join(''))}
 
 pd.DataFrame(summary).T.to_csv('feature_sets.csv', index=False)
+dump(summary, 'feature_sets.joblib')
 
 # Delete old versions ---------------------------------------------------------
 for f in Path('prediction/sets/').glob('**/*'):
@@ -139,4 +144,4 @@ index = {}
 for i, (k, v) in enumerate(samples.items()):
     dump(v, filename='prediction/sets/' + str(i))
     index[i] = k
-dump(index, filename='prediction/index.joblib')
+dump([sets_by, index], filename='prediction/index.joblib')

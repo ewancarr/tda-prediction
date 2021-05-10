@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from joblib import load, dump
+from tqdm import tqdm
 
 def cv_metric(fit, reps=100):
     summary = {}
@@ -11,11 +12,11 @@ def cv_metric(fit, reps=100):
     return(summary)
 
 
-index = load('prediction/index.joblib')
+set_by, index = load('prediction/index.joblib')
 
 fits = {}
 for f in Path('prediction/fits').iterdir():
-    fits[int(f.stem)] = {'file': f,
+    fits[int(f.stem)] = {'file': str(f),
                          'id': f.stem,
                          'model': index[int(f.stem)],
                          'fit': load(f)}
@@ -38,5 +39,7 @@ for k, v in fits.items():
                                                   'test_spec', 'test_ppv',
                                                   'test_npv', 'test_brier',
                                                   'auc', 'auc_lo', 'auc_hi']])
-summary_table = pd.concat(summary_table)
-summary_table.sort_values('auc', ascending=False).to_csv('auc.csv')
+summary_table = pd.concat(summary_table).sort_values('auc', ascending=False)
+
+summary_table.sort_values('auc', ascending=False). \
+        to_csv('auc.csv', index=False)
