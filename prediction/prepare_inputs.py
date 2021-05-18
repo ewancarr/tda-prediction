@@ -17,7 +17,7 @@ inp = Path('data')
 outcomes = load(inp / 'outcomes.joblib')
 baseline = load(inp / 'baseline.joblib')
 replong, repwide = load(inp / 'repmea.joblib')
-landscapes, silouettes, betti = load(inp / 'topological_variables.joblib')
+persistence = load(inp / 'topological_variables.joblib')
 
 # Load growth curve parameters ------------------------------------------------
 gc = {}
@@ -26,7 +26,6 @@ for mw in trange(2, 13, desc='Load growth curve parameters  '):
     gc[mw].columns = [i[0] + '_' + i[1].split('_')[1] for i in gc[mw].columns]
 
 # Define sets of 'RAW' repeated measures --------------------------------------
-
 def reshape_rm(d, mw):
     d = d[d['week'] <= mw].copy()
     d['col'] = d['variable'] + '_w' + d['week'].astype('str')
@@ -70,9 +69,7 @@ for k, v in gc.items():
     i += 1
 
 # Topological variables
-tda = {k: v for k, v in zip(['land', 'silo', 'betti'],
-                            [landscapes, silouettes, betti])}
-for k, v in tda.items():
+for k, v in persistence.items():
     for lab, dat in zip(['bl', 'NA'], [bl, None]):
         if lab == 'NA':
             sets[str(i) + '_' + k] = v
@@ -81,7 +78,7 @@ for k, v in tda.items():
         i += 1
 
 # COMBINED: Topological variables PLUS [repeated measures OR growth curves]
-for k, v in tda.items():
+for k, v in persistence.items():
     for k2, v2 in rm.items():
         sets[str(i) + '_comb' + k + 'rm_' + str(k2)] = v.merge(v2, **mrg) 
         i += 1
@@ -114,14 +111,12 @@ for drug in ['escitalopram', 'nortriptyline', 'both']:
                                'label': (drug, rand)}
         i += 1
 
-for k, v in sets_by.items():
-    print(k, v['label'], len(v['id']))
-
 # Create binary measure of 'escitalopram'
 drug = baseline[['drug']].copy()
 drug.loc[:, 'escitalopram'] = drug['drug'] == 'escitalopram'
 drug.drop(labels='drug', axis=1, inplace=True)
  
+# Create versions of data for each sample (based on drug, randomisation)  
 samples = {}
 for k1, v1 in sets_by.items():
     for k2, v2 in sets.items():
@@ -131,19 +126,22 @@ for k1, v1 in sets_by.items():
         samples[k1 + '_' + k2] = {'label': v1['label'],
                                   'data': dat}
 
-# Check counts
+
+# Drop participants with missing outcome information --------------------------
+has_outcome = outcomes['remit'].dropna().index
+for k, v in samples.items():
+    v['data'] = v['data'].loc[v['data'].index.intersection(has_outcome)]
+
+# Check counts ----------------------------------------------------------------
+for k, v in sets_by.items():
+    print(k, v['label'], len(v['id']))
+
 mrg == {'left_index': True, 'right_index': True, 'how': 'left'}
 check = baseline. \
         merge(drug, **mrg). \
         merge(outcomes, **mrg). \
         dropna(axis=0, subset=['remit'])
 check.value_counts(subset=['drug', 'random'])
-
-
-# Drop participants with missing outcome information --------------------------
-has_outcome = outcomes['remit'].dropna().index
-for k, v in samples.items():
-    v['data'] = v['data'].loc[v['data'].index.intersection(has_outcome)]
 
 # Check that all samples have 0/1 on outcome ----------------------------------
 check = {}
@@ -167,9 +165,14 @@ dump(summary, 'feature_sets.joblib')
 for f in Path('prediction/sets/').glob('**/*'):
     f.unlink()
 
-# Save all sets to disk ------------------------------------------------------
+# Save required sets to disk --------------------------------------------------
+selected_samples = {}
+for k, v in samples.items():
+    if k[0] in ['A', 'D', 'G']:
+        selected_samples[k] = v
+
 index = {}
-for i, (k, v) in enumerate(samples.items()):
+for i, (k, v) in enumerate(selected_samples.items()):
     dump(v, filename='prediction/sets/' + str(i))
     index[i] = k
 dump([sets_by, index], filename='prediction/index.joblib')

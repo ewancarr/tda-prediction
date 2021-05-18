@@ -3,7 +3,7 @@
 #SBATCH --tasks=2
 #SBATCH --mem=4000
 #SBATCH --job-name=array
-#SBATCH --array=0-1097
+#SBATCH --array=0-393
 #SBATCH --output=/scratch/users/%u/tda/prediction/v2/prediction/logs/%a.out
 #SBATCH --time=0-72:00
 module load apps/singularity

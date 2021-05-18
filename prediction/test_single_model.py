@@ -15,6 +15,7 @@ from sklearn.metrics import (make_scorer, roc_auc_score, confusion_matrix,
 from sklearn import ensemble
 from sklearn.preprocessing import scale, StandardScaler
 from sklearn.feature_selection import VarianceThreshold
+import glmnet
 
 def tn(y_true, y_pred):
     return(confusion_matrix(y_true, y_pred)[0, 0])
@@ -104,11 +105,14 @@ clf_rf = make_pipeline(VarianceThreshold(),
 clf_lr = make_pipeline(VarianceThreshold(),
                        StandardScaler(),
                        KNNImputer(n_neighbors=5),
-                       LogitNet())
+                       glmnet.LogitNet(alpha=0.5,
+                                       n_splits=5,
+                                       scoring='roc_auc'))
 
 rkf = RepeatedKFold(n_splits=10, 
                     n_repeats=n_rep, 
                     random_state=42)
+
 
 fit = {}
 for f, label in zip([clf_rf, clf_lr],
@@ -121,10 +125,3 @@ for f, label in zip([clf_rf, clf_lr],
                                 n_jobs=-1)
 
 dump(fit, filename = 'prediction/fits/' + str(i))
-
-# Fit in R/glmnet
-
-CONTINUE HERE
-
-X.to_csv('prediction/scratch/' + str(i) + '_X.csv')
-pd.DataFrame({'y': y}).to_csv('prediction/scratch/' + str(i) + '_y.csv')
