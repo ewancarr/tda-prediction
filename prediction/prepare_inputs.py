@@ -8,6 +8,7 @@ from pathlib import Path
 from joblib import load, dump
 from tqdm import trange
 import string
+from re import search
 
 # This file loads data (prepared locally and uploaded to Rosalind) and
 # prepares various 'configurations' of features/models for modelling.
@@ -165,10 +166,11 @@ dump(summary, 'feature_sets.joblib')
 for f in Path('prediction/sets/').glob('**/*'):
     f.unlink()
 
+
 # Save required sets to disk --------------------------------------------------
 selected_samples = {}
 for k, v in samples.items():
-    if k[0] in ['A', 'D', 'G']:
+    if search('^[ADG]_[0-9]_baseline|^[ADG]_[0-9]+_landscape|^[ADG]_[0-9]+_betti|^[ADG]_[0-9]+_silouette', k):
         selected_samples[k] = v
 
 index = {}
@@ -176,3 +178,8 @@ for i, (k, v) in enumerate(selected_samples.items()):
     dump(v, filename='prediction/sets/' + str(i))
     index[i] = k
 dump([sets_by, index], filename='prediction/index.joblib')
+
+# Save copy of data to send to Raquel
+for s in ['A', 'D', 'G']:
+    selected_samples[s + '_1_baseline']['data']. \
+            to_stata('data/stata/' + s + '_1_baseline.dta')

@@ -17,6 +17,8 @@ from sklearn.preprocessing import scale, StandardScaler
 from sklearn.feature_selection import VarianceThreshold
 import glmnet
 
+print("Loaded modules...")
+
 def tn(y_true, y_pred):
     return(confusion_matrix(y_true, y_pred)[0, 0])
 
@@ -82,6 +84,8 @@ scorers = {'auc': 'roc_auc',
 i = sys.argv[1]
 n_rep = int(sys.argv[2])
 
+print('Current input: ' + str(i) + "; n_rep = " + str(n_rep))
+
 X = load('prediction/sets/' + str(i))['data']
 y = load('data/outcomes.joblib')[['remit']]
 
@@ -94,6 +98,8 @@ Xy = X.merge(y,
 
 X = Xy.drop(labels='remit', axis=1)
 y = Xy['remit'].values
+
+print("Loaded data, prepared X, y...")
 
 # Fit in Python/Scikit
 
@@ -124,4 +130,8 @@ for f, label in zip([clf_rf, clf_lr],
                                 cv=rkf,
                                 n_jobs=-1)
 
+print('Fit models...')
+
 dump(fit, filename = 'prediction/fits/' + str(i))
+
+print('Saved outputs...')

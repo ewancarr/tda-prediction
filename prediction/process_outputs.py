@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -11,21 +12,41 @@ def cv_metric(fit, reps=100):
         summary[k] = np.percentile(fold_means, [50, 2, 98])
     return(summary)
 
+sets_by, index = load('prediction/index.joblib')
 
-set_by, index = load('prediction/index.joblib')
-
+# Load fitted models
+n_fits = len(index)
+n_miss = 0
+stub = 'prediction/fits/'
 fits = {}
-for f in Path('prediction/fits').iterdir():
-    fits[int(f.stem)] = {'file': str(f),
-                         'id': f.stem,
-                         'model': index[int(f.stem)],
-                         'fit': load(f)}
+for f in range(n_fits):
+    if os.path.exists(stub + str(f)):
+        print("Loaded: " + str(f) + " " + index[f])
+        fits[f] = {'file': str(f),
+                             'id': f,
+                             'model': index[f],
+                             'fit': load(stub + str(f))}
+    else:
+        # print("Not found: " + str(f) + " " + index[f])
+        n_miss += 1
+print('Number missing: ', n_miss)
 
+
+# Split fits by estimator (random forest, elastic net)
+by_estimator = {}
 for k, v in fits.items():
+    for crf, lab in zip(['random_forest', 'logit_net'], ['rf', 'en']):
+        by_estimator[str(k) + '_' + lab] = {'file': v['file'],
+                                           'id': v['id'],
+                                           'model': v['model'],
+                                           'fit': v['fit'][crf]}
+
+
+for k, v in by_estimator.items():
     v['stat'] = cv_metric(v['fit'])
 
 summary_table = []
-for k, v in fits.items():
+for k, v in by_estimator.items():
     cell = {k2: f'{v2[0]:.3f} [{v2[1]:.3f}, {v2[2]:.3f}]' 
             for k2, v2 in v['stat'].items()}
     cell['model'] = k
