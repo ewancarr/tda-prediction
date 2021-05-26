@@ -239,14 +239,6 @@ outcomes.columns = ['remit', 'perc']
 def pow(n):
     return lambda x: np.power(x[1]-x[0], n)
 
-# (a) running elastic net, first with the same approach re persistence
-# landscapes in blue square (MDS, 3 dimensions, 12 landscapes, etc) (b) running
-# elastic net, with the MDS approach, but only involving 1 dimension and 3
-# landscapes (no worries if it's not easy to increase the number of points of
-# discretisation, you already saw this fact was not affecting your results that
-# much).
-
-
 def describe_persistence(v,
                          fun='landscape',
                          mas=1e5,
@@ -332,33 +324,59 @@ split = {}
 for k, v in dict(tuple(replong.groupby('subjectid'))).items():
     split[k] = v.pivot(index='week',
                        columns='variable',
-                       values='value').loc[0:4, :]
+                       values='value')
 
-# Remove participants with 100% missing data ----------------------------------
-for k in list(split):
-    if split[k].isna().all().all():
-        del split[k]
+
+# Check: how many weeks of data do we have? -----------------------------------
+n_weeks = []
+for k, v in split.items():
+    n_weeks.append(v.notna().any(axis=1).sum())
+n_weeks = pd.DataFrame({'n': pd.Series(n_weeks, dtype='int32').value_counts()})
+n_weeks['prop'] = n_weeks['n'] / n_weeks['n'].sum() 
+n_weeks.sort_index(inplace=True)
+n_weeks['cumsum'] = np.cumsum(n_weeks['prop'])
+n_weeks
+
+# Create dictionary with participants by 'number of weeks' --------------------
+
+# NOTE: we're removing participants who have just one or two weeks of data, 
+#       for each value of 'mw'.
+
+split_by = {}
+for mw in range(2, 13):
+    bymw = {}
+    for k, v in split.items():
+        if v.loc[0:mw, :].notna().any(axis=1).sum() > 2:
+            bymw[k] = v
+    split_by[mw] = bymw
+
+[len(v) for k, v in split_by.items()]
 
 # Compute persistence summaries for each participant --------------------------
-
 persistence = {}
 for f, b in zip(['landscape', 'silouette', 'betti'], [500, 500, 500]):
     for lab, o in zip(['a', 'b'],
                       [{'dims': [0, 1, 2], 'n_land': 12},
                        {'dims': [0], 'n_land': 3}]):
-        P = Parallel(n_jobs=24)(delayed(describe_persistence)(i,
-                                                              fun=f,
-                                                              bins=b,
-                                                              **o)
-                                for i in split.values())
-        P = {k: v[0] for k, v in zip(split.keys(), P)}
-        P = pd.DataFrame(P).T
-        P.columns = ['X' + str(i) for i in list(P)]
-        key = f + lab
-        persistence[key] = P
+        # For each value of 'max weeks' (mw)
+        for mw, v in split_by.items():
+            # For each participant
+            P = Parallel(n_jobs=24)(delayed(describe_persistence)(i,
+                                                                  fun=f,
+                                                                  bins=b,
+                                                                  **o)
+                                    for i in v.values())
+            P = {k: v[0] for k, v in zip(split.keys(), P)}
+            P = pd.DataFrame(P).T
+            P.columns = ['X' + str(i) for i in list(P)]
+            key = f + '_' + lab + '_' + str(mw)
+            persistence[key] = P
 
 for k, v in persistence.items():
     print(k, np.shape(v))
+
+# NOTE: the sample size differs slightly depending on the number of weeks
+#       selected.
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -372,8 +390,8 @@ repwide = repwide[['col', 'value']]
 repwide = repwide.pivot(columns='col', values='value')
 
 # Export everything -----------------------------------------------------------
-inp = Path('analysis/prediction/GENDEP/v2/inputs')
-dump(persistence, inp / 'topological_variables.joblib')
+inp = Path('analysis/prediction/GENDEP/tda_prediction/inputs')
+dump(persistence, inp / 'persistence.joblib')
 dump(outcomes, inp / 'outcomes.joblib')
 dump(baseline, inp / 'baseline.joblib')
 dump([replong, repwide], inp / 'repmea.joblib')
