@@ -24,21 +24,21 @@ import warnings
 from tqdm import tqdm, trange
 import matplotlib.pyplot as plt
 
-# inp = Path('inputs/growth_curves')
-all_weeks, merged = load('data/merged.joblib')
+lf, repwide = load('data/repmea.joblib')
 outcomes = load('data/outcomes.joblib')
 
-# Reshape repeated measures data from wide to long ----------------------------
-stubs = np.unique([i[0] for i in all_weeks.columns])
-lf = pd.melt(all_weeks, ignore_index=False)
-lf.columns = ['measure', 'week', 'value']
+# # Reshape repeated measures data from wide to long ----------------------------
+# stubs = np.unique([i[0] for i in all_weeks.columns])
+# lf = pd.melt(all_weeks, ignore_index=False)
+# lf.columns = ['measure', 'week', 'value']
+
+stubs = lf['variable'].unique()
 
 # Create list containing all measures/weeks -----------------------------------
-m = lf['week'].max()
 opts = []
-for mw in range(2, m + 1):
+for mw in range(2, 13):
     for s in stubs:
-        val = lf[(lf.measure == s) &
+        val = lf[(lf.variable == s) &
                  (lf.week <= mw)].iloc[:, 1:3].reset_index()
         val.columns = ['subjectid', 'week', s]
         opts.append({'max_weeks': mw,
