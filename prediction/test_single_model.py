@@ -86,7 +86,7 @@ n_rep = int(sys.argv[2])
 
 print('Current input: ' + str(i) + "; n_rep = " + str(n_rep))
 
-X = load('prediction/sets/' + str(i))['data']
+X = load('prediction/sets/' + str(i) + '.joblib')
 y = load('data/outcomes.joblib')[['remit']]
 
 Xy = X.merge(y,
@@ -119,7 +119,6 @@ rkf = RepeatedKFold(n_splits=10,
                     n_repeats=n_rep, 
                     random_state=42)
 
-
 fit = {}
 for f, label in zip([clf_rf, clf_lr],
         ['random_forest', 'logit_net']):
@@ -132,6 +131,6 @@ for f, label in zip([clf_rf, clf_lr],
 
 print('Fit models...')
 
-dump(fit, filename = 'prediction/fits/' + str(i))
+dump(fit, filename = 'prediction/fits/' + str(i) + '.joblib')
 
 print('Saved outputs...')

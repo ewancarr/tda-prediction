@@ -1,6 +1,6 @@
 # Prepare feature sets for GENDEP prediction models
 # Started: 2021-04-13
-# Updated: 2021-04-29 
+# Updated: 2021-05-26 
 
 import numpy as np
 import pandas as pd
@@ -8,7 +8,7 @@ from pathlib import Path
 from joblib import load, dump
 from tqdm import trange
 import string
-from re import search
+import re
 
 # This file loads data (prepared locally and uploaded to Rosalind) and
 # prepares various 'configurations' of features/models for modelling.
@@ -18,7 +18,11 @@ inp = Path('data')
 outcomes = load(inp / 'outcomes.joblib')
 baseline = load(inp / 'baseline.joblib')
 replong, repwide = load(inp / 'repmea.joblib')
-persistence = load(inp / 'topological_variables.joblib')
+persistence = load(inp / 'persistence.joblib')
+landscapes_prev = load(inp /  'landscapes_prev.joblib')
+
+# Format for keys, separated by '_':
+# id    baseline    type1   type2
 
 # Load growth curve parameters ------------------------------------------------
 gc = {}
@@ -36,81 +40,84 @@ rm = {}
 for mw in trange(2, 14, desc='Generate raw repeated measures'):
     rm[mw] = reshape_rm(replong, mw)
 
-# Define feature sets ---------------------------------------------------------
-
-# NOTE: keys must follow a common format: id_label_weeks
+# --------------------------------------------------------------------------- #
+# -------------------------- Define feature sets ---------------------------- #
+# --------------------------------------------------------------------------- #
 
 mrg = {'left_index': True,
        'right_index': True}
 sets = {}
 
-# Baseline only
+# Baseline only ---------------------------------------------------------------
 bl = baseline.copy().drop(labels=['random', 'drug'], axis=1)
-sets['1_baseline'] = bl
+sets[(1, 'baseline', None, None)] = bl
 
-# Repeated measures only
+# Repeated measures, with/without baseline ------------------------------------
 i = 2
 for k, v in rm.items():
-    sets[str(i) + '_rm_' + str(k)] = v
+    sets[(i, 'nobaseline', 'rm' + str(k), None)] = v
+    i += 1
+    sets[(i, 'baseline', 'rm' + str(k), None)] = v.merge(bl, **mrg)
     i += 1
 
-# Repeated measures and baseline
-for k, v in rm.items():
-    sets[str(i) + '_rmbl_' + str(k)] = v.merge(bl, **mrg)
-    i += 1
-
-# Growth curves only
+# Growth curves, with/without baseline ----------------------------------------
 for k, v in gc.items():
-    sets[str(i) + '_gc_' + str(k)] = v
+    sets[(i, 'nobaseline', 'gc' + str(k), None)] = v
+    i += 1
+    sets[(i, 'baseline', 'gc' + str(k), None)] = v.merge(bl, **mrg)
     i += 1
 
-# Growth curves and baseline
-for k, v in gc.items():
-    sets[str(i) + '_gcbl_' + str(k)] = v.merge(bl, **mrg)
+# Topological variables -------------------------------------------------------
+
+# Add landscape variables from review paper (i.e. earlier approach)
+persistence['reviewpaper'] = landscapes_prev
+
+# Each set of topological variables, with/without baseline
+for k, v in persistence.items():
+    sets[(i, 'nobaseline', k, None)] = v
+    i += 1
+    sets[(i, 'baseline', k, None)] = v.merge(bl, **mrg)
     i += 1
 
-# Topological variables
-for k, v in persistence.items():
-    for lab, dat in zip(['bl', 'NA'], [bl, None]):
-        if lab == 'NA':
-            sets[str(i) + '_' + k] = v
-        else:
-            sets[str(i) + '_' + k + lab] = v.merge(dat, **mrg)
-        i += 1
+# Combinations of topological variables plus GC, with/without baseline
 
-# COMBINED: Topological variables PLUS [repeated measures OR growth curves]
-for k, v in persistence.items():
-    for k2, v2 in rm.items():
-        sets[str(i) + '_comb' + k + 'rm_' + str(k2)] = v.merge(v2, **mrg) 
-        i += 1
-    for k2, v2 in gc.items():
-        sets[str(i) + '_comb' + k + 'gc_' + str(k2)] = v.merge(v2, **mrg) 
-        i += 1
+# ----------------------------- NOT USING FOR NOW --------------------------- #
+# # NOTE: for now, we're only looking at 2-6 weeks, to reduce number of models
+# for k1, v1 in persistence.items():
+#     if k1 != 'reviewpaper':
+#         nw = int(re.findall(r'\d+', k1)[-1])
+#         for k2, v2 in gc.items():
+#             if nw <= 6 and k2 <= 6:
+#                 sets[(i, 'nobaseline', k1, 'gc' + str(k2))] = v1.merge(v2, **mrg)
+#                 i += 1
+#                 sets[(i, 'baseline', k1, 'gc' + str(k2))] = v1.merge(v2, **mrg).merge(bl, **mrg)
+#                 i += 1
 
-# Check that all feature sets have correct number of observations
+# Select participants with complete outcome information -----------------------
+has_outcome = outcomes['remit'].dropna().index
 for k, v in sets.items():
-    if len(v) > 900:
-        print(k)
+    sets[k] = v.loc[v.index.intersection(has_outcome), :]
+
+# Identify lowest sample size across all sets
+lowest = 1e5
+for k, v in sets.items():
+    if len(v) < lowest:
+        lowest = len(v)
+        incl = v.index
+
+# Select a consistent sample size across all sets
+for k, v in sets.items():
+    sets[k] = v.loc[v.index.intersection(incl), :]
+
+for k, v in sets.items():
+    print(len(v), k)
 
 # Create multiple versions, based on randomisation/drug -----------------------
 
 sets_by = {}
-letters = list(string.ascii_uppercase)
-i = 0
-for drug in ['escitalopram', 'nortriptyline', 'both']:
-    for rand in ['randomized', 'non-random', 'both']:
-        if (drug == 'both') & (rand == 'both'):
-            pick = baseline.index
-        elif (drug == 'both'):
-            pick = baseline.loc[baseline['random'] == rand, ].index
-        elif (rand == 'both'):
-            pick = baseline.loc[baseline['drug'] == drug, ].index
-        else:
-            pick = baseline.loc[(baseline['drug'] == drug) &
-                                (baseline['random'] == rand), ].index
-        sets_by[letters[i]] = {'id': pick,
-                               'label': (drug, rand)}
-        i += 1
+sets_by[('A', 'escitalopram', 'fullyrandom')] = baseline.loc[(baseline['random'] == 'randomized') & (baseline['drug'] == 'escitalopram'), ].index
+sets_by[('B', 'nortriptyline', 'fullyrandom')] = baseline.loc[(baseline['random'] == 'randomized') & (baseline['drug'] == 'nortriptyline'), ].index
+sets_by[('C', 'both', 'anyrandom')] = baseline.index
 
 # Create binary measure of 'escitalopram'
 drug = baseline[['drug']].copy()
@@ -121,65 +128,45 @@ drug.drop(labels='drug', axis=1, inplace=True)
 samples = {}
 for k1, v1 in sets_by.items():
     for k2, v2 in sets.items():
-        dat = v2.loc[v2.index.intersection(v1['id'])].copy()
-        if v1['label'][0] == 'both':
-            dat = dat.merge(drug, left_index=True, right_index=True)
-        samples[k1 + '_' + k2] = {'label': v1['label'],
-                                  'data': dat}
+        dat = v2.loc[v2.index.intersection(v1)].copy()
+        if k1[1] == 'both':
+            dat = dat.merge(drug, **mrg)
+        samples[(k1, k2)] = dat
 
-
-# Drop participants with missing outcome information --------------------------
-has_outcome = outcomes['remit'].dropna().index
 for k, v in samples.items():
-    v['data'] = v['data'].loc[v['data'].index.intersection(has_outcome)]
+    print(k, len(v))
+        
+# Save required sets to disk --------------------------------------------------
 
-# Check counts ----------------------------------------------------------------
-for k, v in sets_by.items():
-    print(k, v['label'], len(v['id']))
-
-mrg == {'left_index': True, 'right_index': True, 'how': 'left'}
-check = baseline. \
-        merge(drug, **mrg). \
-        merge(outcomes, **mrg). \
-        dropna(axis=0, subset=['remit'])
-check.value_counts(subset=['drug', 'random'])
-
-# Check that all samples have 0/1 on outcome ----------------------------------
-check = {}
-for k, v in samples.items():
-    y = v['data'].merge(outcomes, left_index=True, right_index=True)['remit']
-    check[k] = [int(y.sum()), len(y)]
-pd.DataFrame(check).T.to_csv('outcome_check.csv')
-
-# Export list of models/features to Excel -------------------------------------
-summary = {}
-for k, v in samples.items():
-    summary[k] = {'key': k,
-                  'sample': v['label'],
-                  'n_feat': np.shape(v['data'])[1],
-                  'n_participants': np.shape(v['data'])[0],
-                  'feat': ' '.join(v['data'].columns.to_flat_index().str.join(''))}
-pd.DataFrame(summary).T.to_csv('feature_sets.csv', index=False)
-dump(summary, 'feature_sets.joblib')
-
-# Delete old versions ---------------------------------------------------------
+# Delete old versions
 for f in Path('prediction/sets/').glob('**/*'):
     f.unlink()
 
-
-# Save required sets to disk --------------------------------------------------
-selected_samples = {}
-for k, v in samples.items():
-    if search('^[ADG]_[0-9]_baseline|^[ADG]_[0-9]+_landscape|^[ADG]_[0-9]+_betti|^[ADG]_[0-9]+_silouette', k):
-        selected_samples[k] = v
-
+# Save
 index = {}
-for i, (k, v) in enumerate(selected_samples.items()):
-    dump(v, filename='prediction/sets/' + str(i))
+for i, (k, v) in enumerate(samples.items()):
+    dump(v, filename='prediction/sets/' + str(i) + '.joblib')
     index[i] = k
+
+# Save index
 dump([sets_by, index], filename='prediction/index.joblib')
 
+# # Export list of models/features to Excel -------------------------------------
+# summary = {}
+# for k, v in samples.items():
+#     summary[k] = {'key': k,
+#                   'sample': v['label'],
+#                   'n_feat': np.shape(v['data'])[1],
+#                   'n_participants': np.shape(v['data'])[0],
+#                   'feat': ' '.join(v['data'].columns.to_flat_index().str.join(''))}
+# pd.DataFrame(summary).T.to_csv('feature_sets.csv', index=False)
+# dump(summary, 'feature_sets.joblib')
+
 # Save copy of data to send to Raquel
-for s in ['A', 'D', 'G']:
-    selected_samples[s + '_1_baseline']['data']. \
-            to_stata('data/stata/' + s + '_1_baseline.dta')
+letters = ['A', 'B', 'C']
+i = 0
+for k, v in samples.items():
+    if k[1] == (1, 'baseline', None, None):
+        print(i)
+        v.to_stata('data/stata/' + letters[i] + '.dta')
+        i += 1
