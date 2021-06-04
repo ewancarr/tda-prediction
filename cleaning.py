@@ -5,7 +5,7 @@ from joblib import Parallel, delayed, dump
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler
 from sklearn.impute import KNNImputer
 from sklearn.manifold import MDS
 import gudhi as gd
@@ -16,35 +16,6 @@ from gudhi.representations import (
     Silhouette,
     BettiCurve,
     DiagramScaler)
-
-
-# Functions -------------------------------------------------------------------
-
-def process_repeated_measures(df, max_week=12):
-    # Select columns
-    df = df.drop('subjectid', axis=1).transpose()
-    df.columns = ['value']
-    df['variable'] = df.index
-    df['week'] = df['variable'].str.extract(r'(\d+)$').astype('int64')
-    df['measure'] = df['variable'].str.replace('\\d+$', '', regex=True)
-    df.drop(['variable'], axis=1, inplace=True)
-    # Reshape from LONG to WIDE
-    df = df.pivot(index='week', values='value', columns='measure')
-    # Remove weeks that are 100% missing across measures
-    df = df.loc[df.isna().sum(axis=1) / len(df.columns) < 1, :]
-    # Impute missing values, if any exist
-    if df.isna().any().any():
-        knn = KNNImputer(n_neighbors=5)
-        dfi = knn.fit_transform(df)
-    else:
-        dfi = df.copy()
-    # Scale
-    sc = StandardScaler()
-    scaled = pd.DataFrame(sc.fit_transform(dfi))
-    # Relabel
-    labels = df.columns[df.isna().sum() / len(df) < 1]
-    scaled.columns = labels
-    return(scaled)
 
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -239,6 +210,7 @@ outcomes.columns = ['remit', 'perc']
 def pow(n):
     return lambda x: np.power(x[1]-x[0], n)
 
+
 def describe_persistence(v,
                          fun='landscape',
                          mas=1e5,
@@ -332,14 +304,14 @@ n_weeks = []
 for k, v in split.items():
     n_weeks.append(v.notna().any(axis=1).sum())
 n_weeks = pd.DataFrame({'n': pd.Series(n_weeks, dtype='int32').value_counts()})
-n_weeks['prop'] = n_weeks['n'] / n_weeks['n'].sum() 
+n_weeks['prop'] = n_weeks['n'] / n_weeks['n'].sum()
 n_weeks.sort_index(inplace=True)
 n_weeks['cumsum'] = np.cumsum(n_weeks['prop'])
 n_weeks
 
 # Create dictionary with participants by 'number of weeks' --------------------
 
-# NOTE: we're removing participants who have just one or two weeks of data, 
+# NOTE: we're removing participants who have just one or two weeks of data,
 #       for each value of 'mw'.
 
 split_by = {}

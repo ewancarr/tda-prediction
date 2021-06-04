@@ -21,6 +21,7 @@ from joblib import dump
 
 # These are taken from tda.prediction.
 
+
 def process_repeated_measures(df):
     """
     Function to process repeated measures data for each participant
@@ -45,7 +46,7 @@ def process_repeated_measures(df):
     df.columns = ['value']
     df['variable'] = df.index
     df['week'] = df['variable'].str.extract(r'(\d+)$')
-    df['measure'] = df['variable'].str.replace('\d+$', '', regex=True)
+    df['measure'] = df['variable'].str.replace(r'\d+$', '', regex=True)
     df.drop(['variable'],
             axis=1,
             inplace=True)
@@ -53,7 +54,7 @@ def process_repeated_measures(df):
     df = df.pivot(index='week',
                   values='value',
                   columns='measure')
-    # If missing all repeated measures, replace with zeros to allow loop to 
+    # If missing all repeated measures, replace with zeros to allow loop to
     # continue
     if df.isnull().all().all():
         df = df.fillna(0)
@@ -129,6 +130,7 @@ def combine_landscapes(ss):
               for b in np.arange(0, 1000)]
     alls.columns = labels
     return(alls)
+
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
