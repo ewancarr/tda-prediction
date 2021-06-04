@@ -19,17 +19,16 @@ n_fits = len(index)
 missing = list()
 stub = 'prediction/fits/'
 fits = {}
-for f in trange(n_fits):
-    fn = str(f) + '.joblib'
+for f in tqdm(index.keys()):
+    fn = f + '.joblib'
     if os.path.exists(stub + fn):
-        fits[f] = {'file': fn,
-                   'id': f,
-                   'model': index[f],
-                   'fit': load(stub + fn)}
+        fits[fn] = {'file': fn,
+                    'id': f,
+                    'model': index[f],
+                    'fit': load(stub + fn)}
     else:
         missing.append((f, index[f]))
 print('Number missing:', len(missing))
-
 
 # Split fits by estimator (random forest, elastic net)
 by_estimator = {}
@@ -42,7 +41,7 @@ for k, v in fits.items():
 
 
 for k, v in tqdm(by_estimator.items()):
-    v['stat'] = cv_metric(v['fit'], reps=5)
+    v['stat'] = cv_metric(v['fit'], reps=10)
 
 summary_table = list()
 for k, v in tqdm(by_estimator.items()):
@@ -59,6 +58,7 @@ tab = pd.concat(summary_table).sort_values('auc', ascending=False)
 # tab.sort_values(['sample', 'hasbaseline', 'model'], inplace=True)
 
 tab.loc[(tab['feat1'] == 'reviewpaper') & (tab['feat2'].isnull())].to_csv('check.csv')
+tab.loc[(tab['feat1'] == 'reviewpaper') & (tab['feat2'].isnull())]
 
 tab.loc[tab['feat1'] == 'reviewpaper'][['model_id', 'model_type', 'id', 'auc', 'sample', 'randomisation', 'hasbaseline']]
 

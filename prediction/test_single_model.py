@@ -131,6 +131,6 @@ for f, label in zip([clf_rf, clf_lr],
 
 print('Fit models...')
 
-dump(fit, filename = 'prediction/fits/' + str(i) + '.joblib')
+dump(fit, filename = 'prediction/fits/' + i + '.joblib')
 
 print('Saved outputs...')

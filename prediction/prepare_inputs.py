@@ -145,8 +145,9 @@ for f in Path('prediction/sets/').glob('**/*'):
 # Save
 index = {}
 for i, (k, v) in enumerate(samples.items()):
-    dump(v, filename='prediction/sets/' + str(i) + '.joblib')
-    index[i] = k
+    n = "{:04d}".format(i)
+    dump(v, filename='prediction/sets/' + n + '.joblib')
+    index[n] = k
 
 # Save index
 dump([sets_by, index], filename='prediction/index.joblib')
@@ -170,3 +171,23 @@ for k, v in samples.items():
         print(i)
         v.to_stata('data/stata/' + letters[i] + '.dta')
         i += 1
+
+# ---------------------- CHECK SAMPLE SIZES --------------------------------- #
+
+print('Number in baseline dataset:  ', np.shape(baseline)[0])
+with_outcome = baseline.loc[outcomes['remit'].index, :]
+print(' ---> with remission outcome:', np.shape(with_outcome)[0])
+
+with_outcome[['drug', 'random']].value_counts()
+with_outcome[['drug']].value_counts()
+with_outcome[['random']].value_counts()
+
+for k, v in persistence.items():
+    print(k, np.shape(v.loc[v.index.intersection(outcomes.index), :]))
+
+baseline.loc[persistence['betti_a_2'].index.intersection(outcomes.index), :][['drug', 'random']].value_counts()
+    print(k, np.shape(v.loc[v.index.intersection(outcomes.index), :]))
+
+sets_by
+
+
