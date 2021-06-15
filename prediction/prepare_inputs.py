@@ -185,6 +185,9 @@ with_outcome[['random']].value_counts()
 for k, v in persistence.items():
     print(k, np.shape(v.loc[v.index.intersection(outcomes.index), :]))
 
+for k, v in samples.items():
+    print(k, np.shape(v.loc[v.index.intersection(outcomes.index), :]))
+    
 baseline.loc[persistence['betti_a_2'].index.intersection(outcomes.index), :][['drug', 'random']].value_counts()
     print(k, np.shape(v.loc[v.index.intersection(outcomes.index), :]))
 

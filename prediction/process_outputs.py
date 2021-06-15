@@ -41,7 +41,7 @@ for k, v in fits.items():
 
 
 for k, v in tqdm(by_estimator.items()):
-    v['stat'] = cv_metric(v['fit'], reps=10)
+    v['stat'] = cv_metric(v['fit'], reps=100)
 
 summary_table = list()
 for k, v in tqdm(by_estimator.items()):
@@ -54,25 +54,4 @@ for k, v in tqdm(by_estimator.items()):
     summary_table.append(ret)
 
 tab = pd.concat(summary_table).sort_values('auc', ascending=False)
-# tab = tab[['id', 'model', 'test_auc', 'auc', 'auc_lo', 'auc_hi', 'sample', 'drug', 'randomisation', 'hasbaseline', 'feat1', 'feat2']]
-# tab.sort_values(['sample', 'hasbaseline', 'model'], inplace=True)
-
-tab.loc[(tab['feat1'] == 'reviewpaper') & (tab['feat2'].isnull())].to_csv('check.csv')
-tab.loc[(tab['feat1'] == 'reviewpaper') & (tab['feat2'].isnull())]
-
-tab.loc[tab['feat1'] == 'reviewpaper'][['model_id', 'model_type', 'id', 'auc', 'sample', 'randomisation', 'hasbaseline']]
-
-
-tab.loc[tab['feat1'].isnull() & tab['feat2'].isnull()]
-tab.loc[tab['feat1'] == 'reviewpaper']['model_id']
-
-tab.to_csv('auc.csv', index=False)
-tab.loc[not tab['feat2'], :]
-tab.loc[(tab['hasbaseline'] == 'baseline') & (not tab['feat2'])]
-tab[(tab['feat2'] == np.nan)]
-
-tab['feat1'].value_counts()
-tab['feat2'].value_counts()
-type(tab['feat2'][0])
-tab['feat2'][0].astype('int32')
-
+tab.to_csv('auc.csv')
