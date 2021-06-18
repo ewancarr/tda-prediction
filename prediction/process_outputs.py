@@ -8,7 +8,7 @@ from tqdm import tqdm, trange
 def cv_metric(fit, reps=100):
     summary = {}
     for k, v in fit.items():
-        fold_means = [np.mean(i) for i in np.array_split(v, reps)]
+        fold_means = [np.nanmean(i) for i in np.array_split(v, reps)]
         summary[k] = np.percentile(fold_means, [50, 2, 98])
     return(summary)
 

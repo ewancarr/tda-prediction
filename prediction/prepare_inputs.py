@@ -98,7 +98,14 @@ has_outcome = outcomes['remit'].dropna().index
 for k, v in sets.items():
     sets[k] = v.loc[v.index.intersection(has_outcome), :]
 
-# Identify lowest sample size across all sets
+# Identify available sample size for each set ---------------------------------
+
+sizes = {}
+for k, v in sets.items():
+    sizes[k] = len(v)
+dump(sizes, 'prediction/sizes.joblib')
+
+# Identify lowest sample size across all sets ---------------------------------
 lowest = 1e5
 for k, v in sets.items():
     if len(v) < lowest:
