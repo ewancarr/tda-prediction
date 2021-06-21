@@ -9,14 +9,8 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.impute import KNNImputer
 from sklearn.manifold import MDS
 import gudhi as gd
-from gudhi.representations import (
-    DiagramSelector,
-    Clamping,
-    Landscape,
-    Silhouette,
-    BettiCurve,
-    DiagramScaler)
-
+from gudhi.representations import (DiagramSelector, Clamping, Landscape,
+                                   Silhouette, BettiCurve, DiagramScaler)
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -45,8 +39,9 @@ rep19['week'] = rep19['variable'].str.extract('(\\d+)$')
 rep19['variable'] = rep19['variable'].str.extract('(.*[a-z])\\d+$')
 
 # VERSION 2 (2021, ITEM-LEVEL DATA) ===========================================
-rep21 = pd.read_stata(Path('data/GENDEP/raw/from_raquel/files_from_sync')
-                      / 'gendep-share-repeated-measures.dta')
+rep21 = pd.read_stata(
+    Path('data/GENDEP/raw/from_raquel/files_from_sync') /
+    'gendep-share-repeated-measures.dta')
 incl = 'subjectid|week|hamd[0-9]+wk|madrs[0-9]+wk|bdi[0-9]+wk'
 rep21 = rep21.filter(regex=incl).set_index('subjectid')
 
@@ -82,15 +77,16 @@ replong['week'] = replong['week'].astype('int32')
 # so we won't be using 'datClin.csv' here.
 
 # gendep_core
-req = ['age', 'sex', 'marital', 'educ', 'occup', 'children', 'ageonset',
-       'drug', 'random', 'mscore', 'melanch', 'atscore', 'atyp', 'anxdep',
-       'anxscore', 'anxsomdep', 'mhssri', 'everssri', 'mhtca', 'evertca',
-       'mhdual', 'everdual', 'mhimao', 'everimao', 'mhoth', 'everoth',
-       'mhantidep', 'everantidep', 'concssri', 'conctca', 'concantidep',
-       'mcbenzo', 'mczhypn', 'mcestro', 'mhmirta', 'mcmirta', 'bmi_wk0',
-       'f1score0', 'f2score0', 'f3score0', 'f61score0', 'f62score0',
-       'f63score0', 'f64score0', 'f65score0', 'f66score0', 'madrs0', 'hdrs0',
-       'bdi0']
+req = [
+    'age', 'sex', 'marital', 'educ', 'occup', 'children', 'ageonset', 'drug',
+    'random', 'mscore', 'melanch', 'atscore', 'atyp', 'anxdep', 'anxscore',
+    'anxsomdep', 'mhssri', 'everssri', 'mhtca', 'evertca', 'mhdual',
+    'everdual', 'mhimao', 'everimao', 'mhoth', 'everoth', 'mhantidep',
+    'everantidep', 'concssri', 'conctca', 'concantidep', 'mcbenzo', 'mczhypn',
+    'mcestro', 'mhmirta', 'mcmirta', 'bmi_wk0', 'f1score0', 'f2score0',
+    'f3score0', 'f61score0', 'f62score0', 'f63score0', 'f64score0',
+    'f65score0', 'f66score0', 'madrs0', 'hdrs0', 'bdi0'
+]
 
 baseline = gendep_core.set_index('subjectid').copy()[req]
 baseline.columns = baseline.columns.str.replace('[_wk]*0$', '', regex=True)
@@ -98,25 +94,23 @@ baseline.columns = baseline.columns.str.replace('[_wk]*0$', '', regex=True)
 # data793
 data793 = pd.read_feather('data/GENDEP/clean/data793.feather')
 data793.set_index('subjectid', inplace=True)
-data793 = data793[['madrs1wk0', 'madrs2wk0', 'madrs3wk0', 'madrs4wk0',
-                   'madrs5wk0', 'madrs6wk0', 'madrs7wk0', 'madrs8wk0',
-                   'madrs9wk0', 'madrs10wk0', 'hamd1wk0', 'hamd2wk0',
-                   'hamd3wk0', 'hamd4wk0', 'hamd5wk0', 'hamd6wk0', 'hamd7wk0',
-                   'hamd8wk0', 'hamd9wk0', 'hamd10wk0', 'hamd11wk0',
-                   'hamd12wk0', 'hamd13wk0', 'hamd14wk0', 'hamd15wk0',
-                   'hamd16awk0', 'hamd16bwk0', 'hamd17wk0', 'bdi1wk0',
-                   'bdi2wk0', 'bdi3wk0', 'bdi4wk0', 'bdi5wk0', 'bdi6wk0',
-                   'bdi7wk0', 'bdi8wk0', 'bdi9wk0', 'bdi10wk0', 'bdi11wk0',
-                   'bdi12wk0', 'bdi13wk0', 'bdi14wk0', 'bdi15wk0', 'bdi16wk0',
-                   'bdi17wk0', 'bdi18wk0', 'bdi19awk0', 'bdi19wk0', 'bdi20wk0',
-                   'bdi21wk0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8',
-                   'k9', 'k10', 'k11', 'k12', 'k13', 'k14', 'k15', 'k16',
-                   'k17', 'k18', 'k19', 'k20', 'k21', 'k22', 'k23', 'k24',
-                   'k25', 'k26', 'k27', 'k28', 'k29', 'k30', 'k31', 'k32',
-                   'k33', 'newbleq1wk0', 'newbleq2wk0', 'newbleq3wk0',
-                   'newbleq4wk0', 'newbleq5wk0', 'newbleq6wk0', 'newbleq7wk0',
-                   'newbleq8wk0', 'newbleq9wk0', 'newbleq10wk0',
-                   'newbleq11wk0', 'newbleq12wk0', 'nevents', 'eventsbin']]
+data793 = data793[[
+    'madrs1wk0', 'madrs2wk0', 'madrs3wk0', 'madrs4wk0', 'madrs5wk0',
+    'madrs6wk0', 'madrs7wk0', 'madrs8wk0', 'madrs9wk0', 'madrs10wk0',
+    'hamd1wk0', 'hamd2wk0', 'hamd3wk0', 'hamd4wk0', 'hamd5wk0', 'hamd6wk0',
+    'hamd7wk0', 'hamd8wk0', 'hamd9wk0', 'hamd10wk0', 'hamd11wk0', 'hamd12wk0',
+    'hamd13wk0', 'hamd14wk0', 'hamd15wk0', 'hamd16awk0', 'hamd16bwk0',
+    'hamd17wk0', 'bdi1wk0', 'bdi2wk0', 'bdi3wk0', 'bdi4wk0', 'bdi5wk0',
+    'bdi6wk0', 'bdi7wk0', 'bdi8wk0', 'bdi9wk0', 'bdi10wk0', 'bdi11wk0',
+    'bdi12wk0', 'bdi13wk0', 'bdi14wk0', 'bdi15wk0', 'bdi16wk0', 'bdi17wk0',
+    'bdi18wk0', 'bdi19awk0', 'bdi19wk0', 'bdi20wk0', 'bdi21wk0', 'k1', 'k2',
+    'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9', 'k10', 'k11', 'k12', 'k13',
+    'k14', 'k15', 'k16', 'k17', 'k18', 'k19', 'k20', 'k21', 'k22', 'k23',
+    'k24', 'k25', 'k26', 'k27', 'k28', 'k29', 'k30', 'k31', 'k32', 'k33',
+    'newbleq1wk0', 'newbleq2wk0', 'newbleq3wk0', 'newbleq4wk0', 'newbleq5wk0',
+    'newbleq6wk0', 'newbleq7wk0', 'newbleq8wk0', 'newbleq9wk0', 'newbleq10wk0',
+    'newbleq11wk0', 'newbleq12wk0', 'nevents', 'eventsbin'
+]]
 
 # Fix variable names
 data793 = data793.melt(ignore_index=False)
@@ -129,7 +123,6 @@ data793 = data793[['measure', 'value']].reset_index()
 data793 = data793.pivot_table(index='subjectid',
                               columns='measure',
                               values='value')
-
 
 # Check no overlapping variables
 any(data793.columns.isin(baseline.columns))
@@ -146,33 +139,27 @@ for v in replong[replong['week'] == 0]['variable'].unique():
         print('ALREADY PRESENT: ', v)
 
 # Create dummy variables for categorical features
-baseline['part01'] = np.select(
-    [baseline['marital'] == 'Married/Cohab',
-     baseline['marital'].isin(['Separated/Divorced',
-                               'Widowed',
-                               'Single'])],
-    [1, 0])
+baseline['part01'] = np.select([
+    baseline['marital'] == 'Married/Cohab', baseline['marital'].isin(
+        ['Separated/Divorced', 'Widowed', 'Single'])
+], [1, 0])
 
-baseline['occup01'] = np.select([baseline['occup'].isin(['unemployed',
-                                                         'retired',
-                                                         'student',
-                                                         'homemaker']),
-                                 baseline['occup'].isin(['full-time',
-                                                         'part-time'])],
-                                [1, 0])
+baseline['occup01'] = np.select([
+    baseline['occup'].isin(['unemployed', 'retired', 'student', 'homemaker']),
+    baseline['occup'].isin(['full-time', 'part-time'])
+], [1, 0])
 
-baseline['nchild'] = np.select([baseline['children'] == 'No children',
-                                baseline['children'] == '1 child',
-                                baseline['children'] == '2 children',
-                                baseline['children'] == '3+ children'],
-                               [0, 1, 2, 3])
+baseline['nchild'] = np.select([
+    baseline['children'] == 'No children', baseline['children'] == '1 child',
+    baseline['children'] == '2 children', baseline['children'] == '3+ children'
+], [0, 1, 2, 3])
 
-baseline['female'] = np.select([baseline['sex'] == 'male',
-                                baseline['sex'] == 'female'],
-                               [0, 1])
+baseline['female'] = np.select(
+    [baseline['sex'] == 'male', baseline['sex'] == 'female'], [0, 1])
 
 baseline.drop(labels=['occup', 'marital', 'children', 'sex'],
-              axis=1, inplace=True)
+              axis=1,
+              inplace=True)
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -184,7 +171,6 @@ data793 = pd.read_feather('data/GENDEP/clean/data793.feather'). \
     set_index('subjectid')
 outcomes = data793[['hdremit.all', 'mdpercadj']]
 outcomes.columns = ['remit', 'perc']
-
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -207,8 +193,9 @@ outcomes.columns = ['remit', 'perc']
 # categorical repeated measures. We have ordinal items but these are
 # treated as continuous by Gower.
 
+
 def pow(n):
-    return lambda x: np.power(x[1]-x[0], n)
+    return lambda x: np.power(x[1] - x[0], n)
 
 
 def describe_persistence(v,
@@ -241,7 +228,7 @@ def describe_persistence(v,
                 LS = Landscape(num_landscapes=n_land, resolution=bins)
                 ps[dim] = LS.fit_transform(D)
             else:
-                ps[dim] = np.full((1, bins*n_land), np.nan)
+                ps[dim] = np.full((1, bins * n_land), np.nan)
     elif fun == 'silouette':
         ps = {}
         for dim in range(3):
@@ -288,16 +275,13 @@ def describe_persistence(v,
                     ps[dim] = np.full((1, bins), 0)
     # Keep requested dimensions
     selected_dimensions = {k: v for k, v in ps.items() if k in dims}
-    return(np.hstack([v for k, v in selected_dimensions.items()]))
+    return (np.hstack([v for k, v in selected_dimensions.items()]))
 
 
 # Split repeated measures data into dictionary of participants ----------------
 split = {}
 for k, v in dict(tuple(replong.groupby('subjectid'))).items():
-    split[k] = v.pivot(index='week',
-                       columns='variable',
-                       values='value')
-
+    split[k] = v.pivot(index='week', columns='variable', values='value')
 
 # Check: how many weeks of data do we have? -----------------------------------
 n_weeks = []
@@ -327,17 +311,19 @@ for mw in range(2, 13):
 # Compute persistence summaries for each participant --------------------------
 persistence = {}
 for f, b in zip(['landscape', 'silouette', 'betti'], [500, 500, 500]):
-    for lab, o in zip(['a', 'b'],
-                      [{'dims': [0, 1, 2], 'n_land': 12},
-                       {'dims': [0], 'n_land': 3}]):
+    for lab, o in zip(['a', 'b'], [{
+            'dims': [0, 1, 2],
+            'n_land': 12
+    }, {
+            'dims': [0],
+            'n_land': 3
+    }]):
         # For each value of 'max weeks' (mw)
         for mw, v in split_by.items():
             # For each participant
-            P = Parallel(n_jobs=24)(delayed(describe_persistence)(i,
-                                                                  fun=f,
-                                                                  bins=b,
-                                                                  **o)
-                                    for i in v.values())
+            P = Parallel(n_jobs=24)(
+                delayed(describe_persistence)(i, fun=f, bins=b, **o)
+                for i in v.values())
             P = {k: v[0] for k, v in zip(split.keys(), P)}
             P = pd.DataFrame(P).T
             P.columns = ['X' + str(i) for i in list(P)]
