@@ -159,18 +159,8 @@ for i, (k, v) in enumerate(samples.items()):
 # Save index
 dump([sets_by, index], filename='prediction/index.joblib')
 
-# # Export list of models/features to Excel -------------------------------------
-# summary = {}
-# for k, v in samples.items():
-#     summary[k] = {'key': k,
-#                   'sample': v['label'],
-#                   'n_feat': np.shape(v['data'])[1],
-#                   'n_participants': np.shape(v['data'])[0],
-#                   'feat': ' '.join(v['data'].columns.to_flat_index().str.join(''))}
-# pd.DataFrame(summary).T.to_csv('feature_sets.csv', index=False)
-# dump(summary, 'feature_sets.joblib')
-
-# Save copy of data to send to Raquel
+# Save copy of data to send to Raquel -----------------------------------------
+repwide.loc[outcomes.index, :].to_stata('data/stata/replong.dta')
 letters = ['A', 'B', 'C']
 i = 0
 for k, v in samples.items():
