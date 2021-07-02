@@ -1,94 +1,95 @@
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import scale, StandardScaler
+from sklearn.impute import KNNImputer
+from sklearn.manifold import MDS
 import gudhi as gd
+from gudhi.representations import (DiagramSelector, Clamping, Landscape,
+                                   Silhouette, BettiCurve, DiagramScaler)
 
 
-def process_repeated_measures(df):
-    """Function to process repeated measures data for each participant"""
-    df = df.drop('subjectid', axis=1)
-    df = df.transpose()
-    df.columns = ['value']
-    df['variable'] = df.index
-    df['week'] = df['variable'].str.extract(r'(\d+)$')
-    df['measure'] = df['variable'].str.replace('\d+$', '')
-    df.drop(['variable'],
-            axis=1,
-            inplace=True)
-    # Reshape LONG --> WIDE
-    df = df.pivot(index='week',
-                  values='value',
-                  columns='measure')
-    # LOCF
-    df = df.fillna(method='ffill')
-    # Fill missing values with 0        [!!! CHECK THIS IS A GOOD IDEA]
-    df = df.fillna(0)
-    # Scale
-    scaled = pd.DataFrame(scale(df))
-    scaled.columns = df.columns
-    return(scaled)
+def reshape(dat):
+    var = dat.columns.str.startswith('rep_')
+    rv = dat.loc[:, var]. \
+        melt(ignore_index=False)
+    rv[['_', 'var', 'item', 'week']] = rv['variable']. \
+        str.split('_', expand=True)
+    rv['w'] = rv['week'].str.extract(r'(?P<week>\d+$)').astype('int')
+    rv['var'] = rv['var'] + '_' + rv['item']
+    rv.drop(labels=['_', 'week', 'variable', 'item'], axis=1, inplace=True)
+    rv.sort_values(['subjectid', 'var', 'w'], inplace=True)
+    return((rv, var))
 
 
-def summarise_alpha_complex(simplex_tree):
-    result_str = 'Alpha complex is of dimension ' + repr(simplex_tree.dimension()) + ' - ' + \
-        repr(simplex_tree.num_simplices()) + ' simplices - ' + \
-        repr(simplex_tree.num_vertices()) + ' vertices.'
-    print(result_str)
-    fmt = '%s -> %.2f'
-    for filtered_value in simplex_tree.get_filtration():
-        print(fmt % tuple(filtered_value))
+def knn(dat):
+    # kNN imputation, but retaining column names
+    cols = dat.columns
+    index = dat.index
+    imp = KNNImputer(n_neighbors=5)
+    dat = imp.fit_transform(dat)
+    return(pd.DataFrame(dat, columns=cols, index=index))
 
 
-def landscapes_approx(diag_dim, x_min, x_max, nb_steps, nb_landscapes):
-    landscape = np.zeros((nb_landscapes, nb_steps))
-    step = (x_max - x_min) / nb_steps
-    for i in range(nb_steps):
-        x = x_min + i * step
-        event_list = []
-        for pair in diag_dim:
-            b = pair[0]
-            d = pair[1]
-            if (b <= x) and (x <= d):
-                if x >= (d+b)/2:
-                    event_list.append((d-x))
+def compute_topological_variables(dat,
+                                  max_week=5,
+                                  use_mds=True,
+                                  mas=1e5,
+                                  fun='landscape',
+                                  dims=[0, 1, 2],
+                                  n_land=3,
+                                  bins=10,
+                                  keep_rm=False):
+
+    # Select repeated measures and reshape from WIDE to LONG format
+    rv, v = reshape(dat)
+
+    # For each participant, generate landscape variables
+    ls = {}
+    for k in rv.index[~rv.index.duplicated()]:
+        # Select this participant's rows
+        # Reshape into grid of 'weeks' vs. 'measures'
+        d = rv.loc[k, :]. \
+            pivot(columns='var', values='value', index='w'). \
+            loc[range(max_week + 1), :]. \
+            values
+        if use_mds:
+            # If using MDS, transpose and extract 3 components
+            mds = MDS(n_components=3, random_state=42)
+            d = mds.fit_transform(d.T)
+        # Construct landscapes
+        ac = gd.AlphaComplex(d)
+        simplex_tree = ac.create_simplex_tree(max_alpha_square=mas)
+        simplex_tree.compute_persistence()
+        if fun == 'landscape':
+            ps = {}
+            # Construct landscapes in required dimensions
+            for dim in dims:
+                D = simplex_tree.persistence_intervals_in_dimension(dim)
+                D = DiagramSelector(use=True,
+                                    point_type="finite").fit_transform([D])
+                if np.shape(D)[1] > 0:
+                    LS = Landscape(num_landscapes=n_land, resolution=bins)
+                    ps[dim] = LS.fit_transform(D)
                 else:
-                    event_list.append((x-b))
-        event_list.sort(reverse=True)
-        event_list = np.asarray(event_list)
-        for j in range(nb_landscapes):
-            if(j < len(event_list)):
-                landscape[j, i] = event_list[j]
-    return landscape
+                    ps[dim] = np.full((1, n_land*bins), 0)
+            ls[k] = np.hstack([v for k, v in ps.items()])
 
+    # Combine landscape variables for all participants
+    ls = pd.DataFrame({k: v[0] for k, v in ls.items()}).T
+    ls.columns = ['X' + str(i) for i in ls.columns]
 
-def make_landscape(df, mas=50, xm=20):
-    # Alpha complex -----------------------------------------------------------
-    ac = gd.AlphaComplex(points=df.values)
-    # Simplex tree, persistence -----------------------------------------------
-    simplex_tree = ac.create_simplex_tree(max_alpha_square=mas)
-    pers = simplex_tree.persistence()
-    # Discretize landscapes ---------------------------------------------------
-    # First dimension
-    D1 = landscapes_approx(simplex_tree.persistence_intervals_in_dimension(0),
-                           x_min=0, x_max=xm, nb_steps=1000, nb_landscapes=3)
-    # Second dimension
-    D2 = landscapes_approx(simplex_tree.persistence_intervals_in_dimension(1),
-                           x_min=0, x_max=xm, nb_steps=1000, nb_landscapes=3)
-    L1, L2, L3 = D1
-    L4, L5, L6 = D2
-    # Combine
-    L = np.concatenate([L1, L2, L3, L4, L5, L6])
-    return({'land': L,
-            'pers': pers})
-
-
-def combine_landscapes(ss):
-    alls = pd.DataFrame(np.vstack([v['land'] for k, v in ss.items()]))
-    alls['id'] = list(ss.keys())
-    alls.set_index('id', inplace=True)
-    labels = [str(a) + '_' + str(b).zfill(3)
-              for a in ['D1L1', 'D1L2', 'D1L3',
-                        'D2L1', 'D2L2', 'D2L3']
-              for b in np.arange(0, 1000)]
-    alls.columns = labels
-    return(alls)
+    mrg = {'left_index': True, 'right_index': True, 'how': 'inner'}
+    if keep_rm:
+        # If we're keeping the repeated measures, first ensure we exclude
+        # those measured beyond 'max_week'
+        c = dat.columns[v]
+        to_drop = np.array([])
+        for w in [i for i in range(0, 26) if i > max_week]:
+            to_drop = np.concatenate([to_drop,
+                                      c[c.str.contains('_w' + str(w) + '$')]])
+        rep = dat.drop(labels=to_drop, axis=1)
+        # Merge landscapes with [baseline + repeated measures]
+        X = rep.merge(ls, **mrg)
+    else:
+        # Merge landscapes with [baseline only]
+        X = dat.loc[:, ~v].merge(ls, **mrg)
+    return(X)

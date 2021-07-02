@@ -174,6 +174,20 @@ outcomes.columns = ['remit', 'perc']
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
+# ┃                    Create WIDE version of repeated measures               ┃
+# ┃                                                                           ┃
+# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+repwide = replong.copy()
+repwide['variable'] = np.where(repwide['variable'].str.contains('_q[0-9]'),
+                               repwide['variable'],
+                               repwide['variable'] + '_qt')
+repwide['col'] = repwide['variable'] + '_w' + repwide['week'].astype('str')
+repwide = repwide[['col', 'value']]
+repwide = repwide.pivot(columns='col', values='value')
+
+# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+# ┃                                                                           ┃
 # ┃                       PREPARE TOPOLOGICAL VARIABLES                       ┃
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
@@ -336,18 +350,13 @@ for k, v in persistence.items():
 # NOTE: the sample size differs slightly depending on the number of weeks
 #       selected.
 
+
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
-# ┃      Create WIDE version of repeated measures, for use in modelling       ┃
+# ┃                                  Export                                   ┃
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-repwide = replong.copy()
-repwide['col'] = repwide['variable'] + '_w' + repwide['week'].astype('str')
-repwide = repwide[['col', 'value']]
-repwide = repwide.pivot(columns='col', values='value')
-
-# Export everything -----------------------------------------------------------
 inp = Path('analysis/prediction/GENDEP/tda_prediction/inputs')
 dump(persistence, inp / 'persistence.joblib')
 dump(outcomes, inp / 'outcomes.joblib')
