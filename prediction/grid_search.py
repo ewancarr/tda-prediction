@@ -4,24 +4,16 @@
 
 from pathlib import Path
 from joblib import load
-import pandas as pd
 import numpy as np
-from sklearn.impute import KNNImputer
-from sklearn.manifold import MDS
-from sklearn.linear_model import LogisticRegression
-import gudhi as gd
 from sklearn.pipeline import Pipeline
 from sklearn.feature_selection import VarianceThreshold
-from sklearn.preprocessing import FunctionTransformer, StandardScaler
+from sklearn.preprocessing import FunctionTransformer 
 from sklearn.model_selection import (RepeatedKFold, GridSearchCV,
-                                     cross_val_score, cross_validate, KFold)
-from gudhi.representations import (DiagramSelector, Clamping, Landscape,
-                                   Silhouette, BettiCurve)
+                                     cross_validate, KFold)
 from glmnet import LogitNet
 
 from functions import (knn,
-                       compute_topological_variables,
-                       reshape)
+                       compute_topological_variables)
 
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
