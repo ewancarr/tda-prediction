@@ -2,19 +2,16 @@
 # Author: Ewan Carr
 # Started: 2021-06-25
 
-from pathlib import Path
-from joblib import load
-import numpy as np
+from pathlib impot Path
+from joblib import load, dump
 from sklearn.pipeline import Pipeline
 from sklearn.feature_selection import VarianceThreshold
+from sklearn.utils import resample
 from sklearn.preprocessing import FunctionTransformer 
 from sklearn.model_selection import (RepeatedKFold, GridSearchCV,
                                      cross_validate, KFold)
 from glmnet import LogitNet
-
-from functions import (knn,
-                       compute_topological_variables)
-
+from functions import (knn, compute_topological_variables)
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -41,9 +38,6 @@ r = comb.columns.str.contains('w[012]$')
 incl = ((comb.loc[:, r].notna().sum(axis=1) / r.sum()) > 0.80)
 pct = (comb.loc[:, r].notna().sum(axis=1) / r.sum())
 incl = pct[pct > 0.8].index
-
-incl = np.random.choice(incl, size=100, replace=False)
-
 comb = comb.loc[incl, :]
 
 # Select outcome
@@ -85,35 +79,27 @@ for land in [1, 3, 5, 10, 15]:
     for bins in [10, 100, 1000, 2000]:
         for mas in [10, 100, 1000, 1e5]:
             for dims in [[0], [0, 1], [0, 1, 2]]:
-                param_grid.append({'topo__kw_args': [{'fun': 'landscape',
-                                                      'n_land': land,
-                                                      'bins': bins,
-                                                      'dims': dims,
-                                                      'mas': mas}]})
+                for alpha in [[0.5], [1.0]]:
+                    param_grid.append({'topo__kw_args': [{'fun': 'landscape',
+                                                          'n_land': land,
+                                                          'bins': bins,
+                                                          'dims': dims,
+                                                          'mas': mas}],
+                                        'estimator__alpha': alpha})
 
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
-# ┃                            Run inner/outer CV                             ┃
+# ┃              Run CV for tuning parameters, without repetition             ┃
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-cv_inner = KFold(n_splits=2, shuffle=True, random_state=42)
-cv_outer = RepeatedKFold(n_splits=2, n_repeats=2, random_state=42)
-
-param_grid = param_grid[:5]
-
+cv = KFold(n_splits=10, shuffle=True, random_state=42)
 gs = GridSearchCV(pipe,
                   param_grid,
-                  cv=cv_inner,
+                  cv=cv,
                   scoring='roc_auc',
                   n_jobs=-1)
-
-
-fit = cross_validate(gs,
-                     comb,
-                     y,
-                     cv=cv_outer,
-                     n_jobs=-1,
-                     scoring='roc_auc',
-                     verbose=2)
+fit = gs.fit(comb, y)
+ 
+dump(gs, filename='tuning.joblib')

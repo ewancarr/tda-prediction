@@ -2,9 +2,9 @@ import pandas as pd
 import numpy as np
 from sklearn.impute import KNNImputer
 from sklearn.manifold import MDS
+from sklearn.decomposition import PCA
 import gudhi as gd
-from gudhi.representations import (DiagramSelector, Clamping, Landscape,
-                                   Silhouette, BettiCurve, DiagramScaler)
+from gudhi.representations import DiagramSelector, Landscape
 
 
 def reshape(dat):
@@ -31,7 +31,7 @@ def knn(dat):
 
 def compute_topological_variables(dat,
                                   max_week=5,
-                                  use_mds=True,
+                                  cluster='mds',
                                   mas=1e5,
                                   fun='landscape',
                                   dims=[0, 1, 2],
@@ -51,10 +51,12 @@ def compute_topological_variables(dat,
             pivot(columns='var', values='value', index='w'). \
             loc[range(max_week + 1), :]. \
             values
-        if use_mds:
-            # If using MDS, transpose and extract 3 components
+        if cluster == 'mds':
             mds = MDS(n_components=3, random_state=42)
             d = mds.fit_transform(d.T)
+        elif cluster == 'pca':
+            pca = PCA(n_components=3, random_state=42)
+            d = pca.fit_transform(d.T)
         # Construct landscapes
         ac = gd.AlphaComplex(d)
         simplex_tree = ac.create_simplex_tree(max_alpha_square=mas)
