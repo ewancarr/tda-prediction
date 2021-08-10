@@ -36,11 +36,11 @@ stubs = lf['variable'].unique()
 
 # Create list containing all measures/weeks -----------------------------------
 opts = []
-for mw in range(2, 13):
+for mw in [2, 4, 6]:
     for s in stubs:
         val = lf[(lf.variable == s) &
                  (lf.week <= mw)].iloc[:, 1:3].reset_index()
-        val.columns = ['subjectid', 'week', s]
+        val.columns = ['subjectid', s, 'week']
         opts.append({'max_weeks': mw,
                      'label': s,
                      'values': val})
