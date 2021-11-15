@@ -8,6 +8,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from joblib import load
+import seaborn as sns
+font = {'fontname': 'Arial'}
+plt.rcParams['font.family'] = 'sans-serif'
+plt.rcParams['font.sans-serif'] = ['Arial']
 
 inp = Path('data')
 outcomes = load(inp / 'outcomes.joblib')
@@ -20,6 +24,9 @@ def cv_metric(fit, reps=100):
             for i in np.array_split(fit['test_score'], reps)]
     return(np.percentile(fold_means, [50, 2, 98]))
 
+# Load latest estimates from grid search
+cv_landscapes = load('saved/2021_08_09/2021_08_11_082130_outer_cv.joblib')
+_, cv_gc = load('saved/2021_08_09/2021_08_09_031950_outer_cv.joblib')
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -46,7 +53,7 @@ pooled = pd.concat(pooled)
 pooled = pooled.merge(outcomes, left_index=True, right_index=True, how='left')
 
 # Recoded several variables
-pooled['remit'] = pooled['remit'].astype('int32')
+pooled['remit'] = pooled['remit'].astype('int32')                # type: ignore
 
 def calc_sum(x):
     if x.dtype == 'float':
@@ -63,18 +70,20 @@ labels = {'age': ('Age', 'Median [range]'),
           'occup01': ('Employed', '% (n)')}
 
 
-table1 = pooled[req].groupby('samp').agg(calc_sum).T
-for r in table1.index:
+table1 = pooled[req].groupby('samp').agg(calc_sum).T             # type: ignore
+for r in table1.index:                                           # type: ignore
     table1.loc[r, 'label'] = labels[r][0]
     table1.loc[r, 'measure'] = labels[r][1]
 
 # Get Ns 
-c, a, b = pooled['samp'].value_counts()
-table1.columns = [f'A (n={a})', f'B (n={b})', f'C (n={c})', 'Label', 'Measure']
+c, a, b = pooled['samp'].value_counts()                          # type: ignore
+table1.columns = [f'A (n={a})',                                  # type: ignore
+                  f'B (n={b})',
+                  f'C (n={c})',
+                  'Label',
+                  'Measure']
 table1 = table1.iloc[:, [3, 4, 0, 1, 2]]
-
 table1.to_excel('~/table1.xlsx')
-
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -121,13 +130,12 @@ for k, v in cv_gc.items():
 gc = pd.DataFrame(gc)
 
 
-# Make figures --------------------------------t--------------------------------
+# Make figures ----------------------------------------------------------------
 
 def lighten_color(color, amount=0.5):
     """
     Lightens the given color by multiplying (1-luminosity) by the given amount.
     Input can be matplotlib color string, hex string, or RGB tuple.
-
     Examples:
     >> lighten_color('g', 0.3)
     >> lighten_color('#F034A3', 0.6)
@@ -145,27 +153,29 @@ def lighten_color(color, amount=0.5):
 
 cv['method'] = np.where(cv['keep_rm'], 'lsrm', 'ls')
 cv.drop(labels='keep_rm', axis=1, inplace=True)
-
 d = pd.concat([gc, cv]).reset_index()
+pal = sns.color_palette()
+d['col'] = None
+d['col'] = d['col'].astype(object)
 
 for i, r in d.iterrows():
     if r['method'] == 'ls':
         d.at[i, 'nudge'] = -0.55
-        d.at[i, 'col'] = 'green'
-        d.at[i, 'hash'] = ''
+        d.at[i, 'col'] = pal[0]
+        d.at[i, 'hatch'] = ''
     elif r['method'] == 'lsrm':
         d.at[i, 'nudge'] = -0.185
-        d.at[i, 'col'] = 'green'
-        d.at[i, 'hash'] = '.'
+        d.at[i, 'col'] = pal[4]
+        d.at[i, 'hatch'] = '//'
     elif r['method'] == 'gc':
         d.at[i, 'nudge'] = 0.185
-        d.at[i, 'col'] = 'red'
-        d.at[i, 'hash'] = ''
+        d.at[i, 'col'] = pal[2]
+        d.at[i, 'hatch'] = ''
     elif r['method'] == 'rm':
         d.at[i, 'nudge'] = 0.55
-        d.at[i, 'col'] = 'blue'
-        d.at[i, 'hash'] = ''
-d['xpos'] = d['max_week'] + d['nudge']
+        d.at[i, 'col'] = pal[3]
+        d.at[i, 'hatch'] = ''
+d['xpos'] = d['max_week'] + d['nudge']                           # type: ignore
 
 subtitles = {'A': f'Escitalopram (n={str(a)})',
              'B': f'Nortriptyline (n={str(b)})',
@@ -174,34 +184,51 @@ subtitles = {'A': f'Escitalopram (n={str(a)})',
 fig, axes = plt.subplots(3, sharex=True, sharey=True, figsize=(8, 10))
 for ax, samp in zip(axes, ['A', 'B', 'C']):
     p = d.loc[d['sample'] == samp]
-    ax.bar('xpos', 'auc', data=p, width=0.30, color=p['col'], hatch=p['hash'])
+    ax.bar('xpos',
+            'auc',
+            data=p,
+            width=0.30,
+            color=p['col'],
+            hatch=p['hatch'])
     ax.set_ylim(0.5, 1.0)
-    errors = [p['hi'].values, p['lo'].values]
+    errors = [p['hi'].values,
+            p['lo'].values]
     yerr1 = p['auc'].values
     # Plot error bars
-    yerr = [(p['auc'] - p['lo']).values, (p['hi'] - p['auc']).values]
+    yerr = [(p['auc'] - p['lo']).values,
+            (p['hi'] - p['auc']).values]
     ax.errorbar(x=p['xpos'],
                 y=p['auc'],
                 yerr=yerr,
                 fmt=' ',
                 c='orange')
     for k, v in p.iterrows():
-        ax.text(v['xpos'], v['hi'] + 0.02, f'{v["auc"]:.3f}', ha='center', size='x-small')
-        ax.text(v['xpos'], 0.52, v['method'].upper(), ha='center', size='x-small', c=lighten_color(v['col'], 0.3))
+        ax.text(v['xpos'], v['hi'] + 0.02,
+                f'{v["auc"]:.3f}',
+                ha='center',
+                size='x-small',
+                **font)
+        ax.text(v['xpos'],
+                0.52,
+                v['method'].upper(),
+                ha='center', 
+                size='x-small',
+                c=lighten_color(v['col'], 0.3),
+                **font)
     ax.set_title(subtitles[samp])
     ax.set_xticks([2, 4, 6])
     ax.tick_params(axis='x', bottom=False)
     if samp == 'A':
+        methods = list()
+        for lab, col in zip(['Landscapes',
+                             'Landscapes and repeated measures',
+                             'Growth curves',
+                             'Repeated measures'],
+                             [0, 4, 2, 3]):
+            methods.append(mpatches.Patch(color=pal[col], label=lab))
         ax.legend(handles=methods,
-                   ncol=2,
-                   loc='upper left')
-methods = list()
-for lab, col in zip(['Landscapes',
-                     'Landscapes and repeated measures',
-                     'Growth curves',
-                     'Repeated measures'],
-                     colors):
-    methods.append(mpatches.Patch(color=col, label=lab))
+                  ncol=2,
+                  loc='upper left')
 fig.supylabel('AUC')
 fig.supxlabel('Number of weeks')
 plt.tight_layout()
@@ -213,32 +240,49 @@ auc_tab = d.pivot(index=['sample', 'drug', 'random', 'max_week'],
                   columns='method',
                   values='cell') 
 auc_tab = auc_tab[['ls', 'lsrm', 'gc', 'rm']]
-auc_tab.to_excel('~/auc.xlsx')
-
+auc_tab.to_excel('~/auc.xlsx')                                   # type: ignore
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
-# ┃                  Best performance for each week of data                   ┃
+# ┃                    Plot best AUC for each week of data                    ┃
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
+d['best'] = d.groupby(['sample', 'max_week'])['auc'].transform(max)
+best = d[d['best'] == d['auc']][['sample', 'max_week', 'method',
+    'auc', 'lo', 'hi']]. \
+            sort_values(['sample', 'max_week'])
+best['x'] = best['max_week'].astype('int')
+best = pd.DataFrame({'method': ['rm', 'lsrm', 'gc'],
+                     'label': ['Repeated measures',
+                               'Repeated measures + Landscapes',
+                               'Growth curves'],
+                     'col': ['red', 'green', 'blue']}).merge(best, on='method')
+best['method'] = best['method'].str.upper()
+best['m'] = np.select([best['sample'] == 'A',
+                       best['sample'] == 'B',
+                       best['sample'] == 'C'],
+                       ['o', '^', 's'])
+best.sort_values(['sample', 'x'], inplace=True)
 
-
-auc['week'] = auc.loc[:, 'feat1'].str.extract('[a-z_]+([0-9]+)')
-auc['type'] = auc['feat1'].str.extract('([a-z]+_*[a-b]*)_*[0-9]+$')
-weekly_max = auc[auc['hasbaseline'] == 'baseline'][['sample',
-                                                    'type', 'week', 'auc',
-                                                    'auc_lo', 'auc_hi',
-                                                    'model_type']]. \
-    dropna(subset=['type', 'week'], axis=0)
-weekly_max['week'] = weekly_max['week'].astype('int32')
-idx = weekly_max.groupby(['sample',
-                          'week'])['auc'].transform(max) == weekly_max['auc']
-weekly_max = weekly_max[idx]
-
-weekly_max.pivot(index='sample', columns=['week'], values=['type'])
-weekly_max.pivot(index='sample', columns=['week'], values=['model_type'])
-
+fig, ax = plt.subplots(figsize=(7, 5))
+for label, df in best.groupby('sample'):
+    for (x, y, method, c, m) in zip(df['x'], df['auc'], df['method'], df['col'], df['m']):
+        ax.scatter(x=x, y=y, c=c, marker=m, label=None, s=45)
+        ax.text(x, y + 0.005, method, ha='center', va='center', label=None)
+    ax.plot('x', 'auc', data=df, color='gray', zorder=0, label=label) 
+ax.set_xticks([2, 4, 6])
+ax.set_yticks([0.5, 0.6, 0.7, 0.8, 0.9])
+ax.set_ylim(0.7, 0.9)
+plt.tick_params(axis='x', bottom=False)
+leg = [plt.Line2D([0], [0], marker='^', color='gray', label='Nortriptyline'),
+       plt.Line2D([0], [0], marker='o', color='gray', label='Escitalopram'),
+       plt.Line2D([0], [0], marker='s', color='gray', label='Combined')]
+plt.legend(handles=leg)
+plt.xlabel('Number of weeks')
+plt.ylabel('AUC')
+plt.tight_layout()
+plt.savefig('figures/best.png', dpi=300)
 
 def get_color(c):
     return (str(
@@ -249,20 +293,3 @@ def get_color(c):
 def get_linetype(b):
     return (str(np.select([b == 'baseline', b == 'nobaseline'],
                           ['o--', '.-'])))
-
-
-# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-# ┃                                                                           ┃
-# ┃                                 AUC by s                                  ┃
-# ┃                                                                           ┃
-# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-
-
-fig, axes = plt.subplots(1, 2, figsize=(10, 5), dpi=150, sharey=True)
-for d, l, i in zip([p_gc, p_rm], ['Growth curves', 'Repeated measures'],
-                   [0, 1]):
-    c = [get_color(i[0]) for i in d.columns]
-    lt = [get_linetype(i[1]) for i in d.columns]
-    d.plot.line(ax=axes[i], color=c, style=lt)
-    axes[i].set_title(l)
-fig.tight_layout()
