@@ -2,12 +2,9 @@
 # Author:       Ewan Carr
 # Started:      2021-08-02
 
-import os
 import numpy as np
 import pandas as pd
 from joblib import load
-from tqdm import tqdm
-from functions import knn, compute_topological_variables
 
 def cv_metric(fit, reps=100):
     fold_means = [np.nanmean(i) 
