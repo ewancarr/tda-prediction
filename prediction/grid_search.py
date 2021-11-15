@@ -148,7 +148,6 @@ comb = comb.loc[set(outcomes.index).intersection(comb.index), :]
 before = comb.copy()
 n1 = np.shape(comb)[0]
 
-
 # Remove people with less than 80% complete data among repeated measures
 # at weeks 0, 1 and 2. (Week 0 = baseline).
 r = comb.columns.str.contains('w[012]$')
@@ -182,8 +181,6 @@ comb.drop(labels=['drug', 'random'], axis=1, inplace=True)
 # Recode 'drug'; remove 'random'
 baseline['escit'] = baseline['drug'] == 'escitalopram'
 baseline.drop(labels=['drug', 'random'], axis=1, inplace=True)
-
-
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
