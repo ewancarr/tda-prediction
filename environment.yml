@@ -12,10 +12,7 @@ dependencies:
   - flake8=3.9.1
   - numpy=1.20.2
   - pandas=1.2.4
-  - mpi4py
-  - dask=2021.7.1
-  - dask-mpi=2.21.0
+  - matplotlib
+  - seaborn
   - pip:
     - glmnet==2.2.1
-    - jupyter-server-proxy
-prefix: /users/k1644956/.conda/envs/tda

@@ -142,3 +142,5 @@ dmypy.json
 .pyre/
 
 *.directory
+
+prediction/re_params/
