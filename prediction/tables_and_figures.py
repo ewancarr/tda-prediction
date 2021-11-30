@@ -307,9 +307,12 @@ fig.supxlabel('Number of weeks')
 plt.tight_layout()
 plt.savefig('figures/auc.png', dpi=600)
 
-# Calculate accuracy ----------------------------------------------------------
+# Calculate other metrics, based on TP, TN, FP, FN ----------------------------
 
 def accuracy(tn, tp, fn, fp):
+    return((tp + tn) / (tp + tn + fp + fn))
+
+def fpr(tn, tp, fn, fp):
     return((tp + tn) / (tp + tn + fp + fn))
 
 d['test_acc'] = None
@@ -321,6 +324,7 @@ for k, v in d.iterrows():
         fn = v['test_fn'][i]
         fp = v['test_fp'][i]
         d.loc[k, 'acc_' + lab] = accuracy(tn, tp, fn, fp)
+        d.loc[k, '_' + lab] = accuracy(tn, tp, fn, fp)
 
 d['test_acc'] = d[['acc_est', 'acc_lo', 'acc_hi']].apply(tuple, axis=1)
 
@@ -349,6 +353,8 @@ for m in ['auc', 'acc', 'sens', 'spec', 'ppv', 'npv']:
 # ┃                    Plot best AUC for each week of data                    ┃
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+# TODO: UPDATE THIS FOR NEW METRICS
 
 d['best'] = d.groupby(['sample', 'max_week'])['auc'].transform(max)
 best = d[d['best'] == d['auc']][['sample', 'max_week', 'method',

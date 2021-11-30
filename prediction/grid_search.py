@@ -18,10 +18,20 @@ from glmnet import LogitNet
 import gudhi as gd
 from gudhi.representations import DiagramSelector, Landscape
 from scipy.stats import ttest_ind
+from sklearn.metrics import (make_scorer, confusion_matrix,
+                             recall_score, brier_score_loss)
 
-refit = False
+refit_grid_search = False
+refit_iv_landscapes = False
+refit_iv_baseline = True
+refit_iv_alts = True
+select_subsample = False
 n_reps = 50
-latest = 'saved/2021_08_09/2021_08_08_153539_grid_search.joblib'
+cores = 10
+grid_search = 'saved/2021_08_09/2021_08_08_153539_grid_search.joblib'
+
+def tstamp(suffix):
+    return(datetime.today().strftime('%Y_%m_%d_%H%M%S') + '_' + suffix + '.joblib')
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -29,16 +39,82 @@ latest = 'saved/2021_08_09/2021_08_08_153539_grid_search.joblib'
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-def cv_metric(fit, reps=50):
-    summary = {}
-    for k, v in fit.items():
-        if reps == 1:
-            summary[k] = np.mean(v)
-        else:
-            fold_means = [np.mean(i) for i in np.array_split(v, reps)]
-            summary[k] = np.percentile(fold_means, [50, 2, 98])
-            summary[k] = np.percentile(fold_means, [50])[0]
-    return(summary)
+def tn(y_true, y_pred):
+    return(confusion_matrix(y_true, y_pred)[0, 0])
+
+
+def fp(y_true, y_pred):
+    return(confusion_matrix(y_true, y_pred)[0, 1])
+
+
+def fn(y_true, y_pred):
+    return(confusion_matrix(y_true, y_pred)[1, 0])
+
+
+def tp(y_true, y_pred):
+    return(confusion_matrix(y_true, y_pred)[1, 1])
+
+
+def calc_npv(y_true, y_prob, threshold=0.5):
+    y_pred = y_prob > threshold
+    n_tn = int(tn(y_true, y_pred))
+    n_fn = int(fn(y_true, y_pred))
+    if n_tn == 0:
+        npv = np.nan
+    else:
+        with np.errstate(invalid='ignore'):
+            npv = np.mean(n_tn / (n_tn + n_fn))
+    return(npv)
+
+
+def calc_ppv(y_true, y_prob, threshold=0.5):
+    y_pred = y_prob > threshold
+    n_tp = int(tp(y_true, y_pred))
+    n_fp = int(fp(y_true, y_pred))
+    if n_tp == 0:
+        ppv = np.nan
+    else:
+        with np.errstate(invalid='ignore'):
+            ppv = np.mean(n_tp / (n_tp + n_fp))
+    return(ppv)
+
+
+def sens(y_true, y_prob, threshold):
+    y_pred = y_prob > threshold
+    return(recall_score(y_true, y_pred))
+
+
+def spec(y_true, y_prob, threshold):
+    y_pred = y_prob > threshold
+    return(recall_score(y_true, y_pred, pos_label=0))
+
+
+scorers = {'auc': 'roc_auc',
+           'sens': make_scorer(recall_score),
+           'spec': make_scorer(recall_score, pos_label=0),
+           'ppv': make_scorer(calc_ppv, needs_proba=True),
+           'npv': make_scorer(calc_npv, needs_proba=True),
+           'tp': make_scorer(tp),
+           'tn': make_scorer(tn),
+           'fp': make_scorer(fp),
+           'fn': make_scorer(fn),
+           'brier': make_scorer(brier_score_loss,
+                                greater_is_better=False,
+                                needs_proba=True)}
+
+def cv_metric(l, reps=50):
+    if reps == 1:
+        return(np.mean(l))
+    else:
+        fold_means = [np.mean(i) for i in np.array_split(l, reps)]
+        return(np.percentile(fold_means, [50, 2, 98]))
+
+def print_summary(l, reps):
+    for k1, v1 in l.items():
+        print(k1)
+        for k2, v2 in v1['cv'].items():
+            if k2 != 'estimator':
+                print(k2, cv_metric(v2, reps))
 
 def reshape(dat):
     var = dat.columns.str.startswith('rep_')
@@ -51,7 +127,6 @@ def reshape(dat):
     rv.drop(labels=['_', 'week', 'variable', 'item'], axis=1, inplace=True)
     rv.sort_values(['subjectid', 'var', 'w'], inplace=True)
     return((rv, var))
-
 
 def knn(dat):
     # kNN imputation, but retaining column names
@@ -104,7 +179,7 @@ def compute_topological_variables(dat,
                     ps[dim] = LS.fit_transform(D)
                 else:
                     ps[dim] = np.full((1, n_land*bins), 0)
-            ls[k] = np.hstack([v for k, v in ps.items()])
+            ls[k] = np.hstack([v for _, v in ps.items()])
 
     # Combine landscape variables for all participants
     ls = pd.DataFrame({k: v[0] for k, v in ls.items()}).T
@@ -178,9 +253,15 @@ for k, v in samp.items():
 comb['escit'] = comb['drug'] == 'escitalopram'
 comb.drop(labels=['drug', 'random'], axis=1, inplace=True)
 
+# Prepare 'baseline' features
 # Recode 'drug'; remove 'random'
 baseline['escit'] = baseline['drug'] == 'escitalopram'
 baseline.drop(labels=['drug', 'random'], axis=1, inplace=True)
+
+# Select subsample for testing purposes
+if select_subsample:
+    for k, v in samp.items():
+        samp[k] = pd.Series(v).sample(frac=0.3)
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -245,7 +326,7 @@ for land in [3, 5, 10, 12, 15]:
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-if refit:
+if refit_grid_search:
     cv_inner = {}
     for k, v in samp.items():
         # For each sample [A, B, C]
@@ -271,11 +352,9 @@ if refit:
                 del X
                 del y
                 del params
-        fn = (datetime.today().strftime('%Y_%m_%d_%H%M%S') +
-              '_grid_search.joblib')
-        dump(cv_inner, filename=fn)
+        dump(cv_inner, filename=tstamp('grid_search'))
 else:
-    cv_inner = load(latest)
+    cv_inner = load(grid_search)
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -283,7 +362,8 @@ else:
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-def evaluate_model(X, y, reps=50, impute=False):
+def evaluate_model(X, y, reps=50, impute=False, return_estimator=False):
+    features = X.columns
     if impute:
         X = knn(X)
     # Remove features with zero VarianceThreshold
@@ -295,42 +375,65 @@ def evaluate_model(X, y, reps=50, impute=False):
                    n_splits=10,
                    random_state=42)
     rkf = RepeatedKFold(n_splits=10, n_repeats=reps, random_state=42)
-    fit = cross_validate(clf, X, y, cv=rkf, scoring='roc_auc', n_jobs=-1)
-    return(fit)
+    fit = cross_validate(clf,
+                         X,
+                         y,
+                         cv=rkf,
+                         scoring=scorers,
+                         n_jobs=cores,
+                         return_estimator=return_estimator)
+    # Refit, once, to get feature importance
+    single = clf.fit(X, y)
+    return({'cv': fit, 'single': single, 'features': features})
 
-cv_outer = {}
-for k, v in samp.items():
-    for max_week in [2, 4, 6]:
-        # For increasing weeks of data
-        for keep_rm in [True, False]:
-            # Prepare X/y
-            X = comb.loc[v].copy()
-            y = hdremit.loc[v].copy()
-            if k[1] != 'both':
-                X.drop(labels=['escit'], axis=1, inplace=True)
-            # Get best parameters from inner CV
-            params = cv_inner[(k,
+if refit_iv_landscapes:
+    cv_landscapes = {}
+    for k, v in samp.items():
+        for max_week in [2, 4, 6]:
+            # For increasing weeks of data
+            for keep_rm in [True, False]:
+                print(k, max_week, keep_rm)
+                # Prepare X/y
+                X = comb.loc[v].copy()
+                y = hdremit.loc[v].copy()
+                if k[1] != 'both':
+                    X.drop(labels=['escit'], axis=1, inplace=True)
+                # Get best parameters from inner CV
+                params = cv_inner[(k,
+                                   keep_rm,
+                                   max_week)].best_params_['topo__kw_args']
+                params['keep_rm'] = keep_rm
+                params['max_week'] = max_week
+                # Impute missing values
+                X = knn(X)
+                # Generate landscape variables (once, rather than at each CV iteration)
+                landscapes = compute_topological_variables(X, **params)
+                # Remove features with zero VarianceThreshold
+                vt = VarianceThreshold()
+                feat = vt.fit_transform(landscapes)
+                # Run repeated CV
+                cv_landscapes[(k,
                                keep_rm,
-                               max_week)].best_params_['topo__kw_args']
-            params['keep_rm'] = keep_rm
-            params['max_week'] = max_week
-            # Impute missing values
-            X = knn(X)
-            # Generate landscape variables (once, rather than at each CV iteration)
-            landscapes = compute_topological_variables(X, **params)
-            # Remove features with zero VarianceThreshold
-            vt = VarianceThreshold()
-            feat = vt.fit_transform(landscapes)
-            # Run repeated CV
-            cv_outer[(k,
-                      keep_rm,
-                      max_week)] = evaluate_model(landscapes, y, n_reps)
+                               max_week)] = evaluate_model(landscapes, y, reps=n_reps)
+    # Save with date/time stamp
+    dump(cv_landscapes, filename=tstamp('cv_landscapes'))
+    del cv_landscapes
 
-for k, v in cv_outer.items():
-    print(k, v['test_score'].mean())
-
-fn = (datetime.today().strftime('%Y_%m_%d_%H%M%S') + '_outer_cv.joblib')
-dump(cv_outer, filename=fn)
+# Fit 'baseline only' model ---------------------------------------------------
+if refit_iv_baseline:
+    cv_baseline = {}
+    for k, v in samp.items():
+        print(k)
+        # Prepare X/y
+        X = baseline.loc[v].copy()
+        y = hdremit.loc[v].copy()
+        if k[1] != 'both':
+            X.drop(labels=['escit'], axis=1, inplace=True)
+        # Run repeated CV
+        cv_baseline[k] = evaluate_model(X, y, n_reps, impute=True)
+    # Save with date/time stamp
+    dump(cv_baseline, filename=tstamp('cv_baseline'))
+    del cv_baseline
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -360,19 +463,15 @@ for mw in [2, 4, 6]:
             how='inner')
 
 # Fit models for each ---------------------------------------------------------
-cv_alts = {}
-for k1, id in samp.items():
-    for k2, dat in alts.items():
-        # Prepare X/y
-        X = dat.loc[id].copy()
-        y = hdremit.loc[id].copy()
-        if k1[1] != 'both':
-            X.drop(labels=['escit'], axis=1, inplace=True)
-        # Run repeated CV
-        cv_alts[(k1, k2)] = evaluate_model(X, y, reps=n_reps, impute=True)
-
-for k, v in cv_alts.items():
-    print(k, v['test_score'].mean())
-
-fn = (datetime.today().strftime('%Y_%m_%d_%H%M%S') + '_outer_cv.joblib')
-dump([cv_outer, cv_alts], filename=fn)
+if refit_iv_alts:
+    cv_alts = {}
+    for k1, id in samp.items():
+        for k2, dat in alts.items():
+            # Prepare X/y
+            X = dat.loc[id].copy()
+            y = hdremit.loc[id].copy()
+            if k1[1] != 'both':
+                X.drop(labels=['escit'], axis=1, inplace=True)
+            # Run repeated CV
+            cv_alts[(k1, k2)] = evaluate_model(X, y, reps=n_reps, impute=True)
+    dump(cv_alts, filename=tstamp('cv_alts'))

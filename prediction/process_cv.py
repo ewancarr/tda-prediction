@@ -92,6 +92,31 @@ gc.pivot(index=['sample', 'drug', 'random', 'max_week'],
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
+# ┃                  Get results from 'baseline only' models                  ┃
+# ┃                                                                           ┃
+# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+
+cv_baseline = load('saved/2021_11_18/2021_11_18_141553_cv_baseline.joblib')
+
+bl = []
+for k, v in cv_baseline.items():
+    p50, p2, p98 = cv_metric(v, reps=100)
+    cell = f'{p50:.3f} [{p2:.3f}, {p98:.3f}]'
+    bl.append({
+        'sample': k[0],
+        'drug': k[1],
+        'random': k[2],
+        'max_week': 0,
+        'auc': p50,
+        'lo': p2,
+        'hi': p98,
+        'cell': cell})
+bl = pd.DataFrame(bl)[['sample', 'drug', 'random', 'max_week', 'cell']].rename({'cell': 'bl'}, axis=1)
+bl.set_index(['sample', 'drug', 'random', 'max_week'], inplace=True)
+
+# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+# ┃                                                                           ┃
 # ┃                       Table comparing all estimates                       ┃
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
@@ -108,13 +133,13 @@ tab_gc = gc.pivot(index=['sample', 'drug', 'random', 'max_week'],
                   values=['cell'])
 tab_gc.columns = ['gc', 'rm']
 
+tab_bl = bl.pivot(index=['sample', 'drug', 'random', 'max_week'],
+                  columns=['method'],
+                  values=['cell'])
+tab_bl.columns = ['bl', 'rm']
 
 # Combined
-tab_all = pd.merge(tab_ls,
-                   tab_gc,
-                   left_index=True,
-                   right_index=True,
-                   how='outer')
-
+how = {'left_index': True, 'right_index': True, 'how': 'outer'}
+tab_all = pd.merge(tab_ls, tab_gc, **how)
 tab_all.to_excel('~/results.xlsx')
 
