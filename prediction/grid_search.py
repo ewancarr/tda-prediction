@@ -19,15 +19,17 @@ import gudhi as gd
 from gudhi.representations import DiagramSelector, Landscape
 from scipy.stats import ttest_ind
 from sklearn.metrics import (make_scorer, confusion_matrix,
-                             recall_score, brier_score_loss)
+                             recall_score, brier_score_loss,
+                             accuracy_score,
+                             balanced_accuracy_score)
 
 refit_grid_search = False
-refit_iv_landscapes = False
+refit_iv_landscapes = True
 refit_iv_baseline = True
 refit_iv_alts = True
 select_subsample = False
-n_reps = 50
-cores = 10
+n_reps = 100
+cores = 20
 grid_search = 'saved/2021_08_09/2021_08_08_153539_grid_search.joblib'
 
 def tstamp(suffix):
@@ -39,20 +41,29 @@ def tstamp(suffix):
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-def tn(y_true, y_pred):
-    return(confusion_matrix(y_true, y_pred)[0, 0])
-
-
-def fp(y_true, y_pred):
+# def fp(y_true, y_pred):
+#     return(confusion_matrix(y_true, y_pred)[0, 1])
+def fp(y_true, y_proba, threshold=0.5):
+    y_pred = y_proba > threshold
     return(confusion_matrix(y_true, y_pred)[0, 1])
 
-
-def fn(y_true, y_pred):
+# def fn(y_true, y_pred):
+#     return(confusion_matrix(y_true, y_pred)[1, 0])
+def fn(y_true, y_proba, threshold=0.5):
+    y_pred = y_proba > threshold
     return(confusion_matrix(y_true, y_pred)[1, 0])
 
-
-def tp(y_true, y_pred):
+# def tp(y_true, y_pred):
+#     return(confusion_matrix(y_true, y_pred)[1, 1])
+def tp(y_true, y_proba, threshold=0.5):
+    y_pred = y_proba > threshold
     return(confusion_matrix(y_true, y_pred)[1, 1])
+
+# def tn(y_true, y_pred):
+#     return(confusion_matrix(y_true, y_pred)[0, 0])
+def tn(y_true, y_proba, threshold=0.5):
+    y_pred = y_proba > threshold
+    return(confusion_matrix(y_true, y_pred)[0, 0])
 
 
 def calc_npv(y_true, y_prob, threshold=0.5):
@@ -94,27 +105,65 @@ scorers = {'auc': 'roc_auc',
            'spec': make_scorer(recall_score, pos_label=0),
            'ppv': make_scorer(calc_ppv, needs_proba=True),
            'npv': make_scorer(calc_npv, needs_proba=True),
-           'tp': make_scorer(tp),
-           'tn': make_scorer(tn),
-           'fp': make_scorer(fp),
-           'fn': make_scorer(fn),
+           'accbal': make_scorer(balanced_accuracy_score),
+           'acc': make_scorer(accuracy_score),
+           'tp': make_scorer(tp, needs_proba=True),
+           'tn': make_scorer(tn, needs_proba=True),
+           'fp': make_scorer(fp, needs_proba=True),
+           'fn': make_scorer(fn, needs_proba=True),
+           # TN
+           'tn10': make_scorer(tn, needs_proba=True, threshold=0.1),
+           'tn20': make_scorer(tn, needs_proba=True, threshold=0.2),
+           'tn30': make_scorer(tn, needs_proba=True, threshold=0.3),
+           'tn40': make_scorer(tn, needs_proba=True, threshold=0.4),
+           'tn60': make_scorer(tn, needs_proba=True, threshold=0.6),
+           'tn70': make_scorer(tn, needs_proba=True, threshold=0.7),
+           'tn80': make_scorer(tn, needs_proba=True, threshold=0.8),
+           'tn90': make_scorer(tn, needs_proba=True, threshold=0.9),
+           # TP
+           'tp10': make_scorer(tp, needs_proba=True, threshold=0.1),
+           'tp20': make_scorer(tp, needs_proba=True, threshold=0.2),
+           'tp30': make_scorer(tp, needs_proba=True, threshold=0.3),
+           'tp40': make_scorer(tp, needs_proba=True, threshold=0.4),
+           'tp60': make_scorer(tp, needs_proba=True, threshold=0.6),
+           'tp70': make_scorer(tp, needs_proba=True, threshold=0.7),
+           'tp80': make_scorer(tp, needs_proba=True, threshold=0.8),
+           'tp90': make_scorer(tp, needs_proba=True, threshold=0.9),
+           # FN
+           'fn10': make_scorer(fn, needs_proba=True, threshold=0.1),
+           'fn20': make_scorer(fn, needs_proba=True, threshold=0.2),
+           'fn30': make_scorer(fn, needs_proba=True, threshold=0.3),
+           'fn40': make_scorer(fn, needs_proba=True, threshold=0.4),
+           'fn60': make_scorer(fn, needs_proba=True, threshold=0.6),
+           'fn70': make_scorer(fn, needs_proba=True, threshold=0.7),
+           'fn80': make_scorer(fn, needs_proba=True, threshold=0.8),
+           'fn90': make_scorer(fn, needs_proba=True, threshold=0.9),
+           # FP
+           'fp10': make_scorer(fp, needs_proba=True, threshold=0.1),
+           'fp20': make_scorer(fp, needs_proba=True, threshold=0.2),
+           'fp30': make_scorer(fp, needs_proba=True, threshold=0.3),
+           'fp40': make_scorer(fp, needs_proba=True, threshold=0.4),
+           'fp60': make_scorer(fp, needs_proba=True, threshold=0.6),
+           'fp70': make_scorer(fp, needs_proba=True, threshold=0.7),
+           'fp80': make_scorer(fp, needs_proba=True, threshold=0.8),
+           'fp90': make_scorer(fp, needs_proba=True, threshold=0.9),
            'brier': make_scorer(brier_score_loss,
                                 greater_is_better=False,
                                 needs_proba=True)}
 
-def cv_metric(l, reps=50):
-    if reps == 1:
-        return(np.mean(l))
-    else:
-        fold_means = [np.mean(i) for i in np.array_split(l, reps)]
-        return(np.percentile(fold_means, [50, 2, 98]))
+# def cv_metric(l, reps=50):
+#     if reps == 1:
+#         return(np.mean(l))
+#     else:
+#         fold_means = [np.mean(i) for i in np.array_split(l, reps)]
+#         return(np.percentile(fold_means, [50, 2, 98]))
 
-def print_summary(l, reps):
-    for k1, v1 in l.items():
-        print(k1)
-        for k2, v2 in v1['cv'].items():
-            if k2 != 'estimator':
-                print(k2, cv_metric(v2, reps))
+# def print_summary(l, reps):
+#     for k1, v1 in l.items():
+#         print(k1)
+#         for k2, v2 in v1['cv'].items():
+#             if k2 != 'estimator':
+#                 print(k2, cv_metric(v2, reps))
 
 def reshape(dat):
     var = dat.columns.str.startswith('rep_')
@@ -291,6 +340,10 @@ tt('bdi')
 tt('hdrs')
 tt('bmi')
 
+# Check prevalence by sample
+for k, v in samp.items():
+    print(k, hdremit.loc[v].mean())
+
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
 # ┃                      Define pipeline and parameters                       ┃
@@ -431,6 +484,7 @@ if refit_iv_baseline:
             X.drop(labels=['escit'], axis=1, inplace=True)
         # Run repeated CV
         cv_baseline[k] = evaluate_model(X, y, n_reps, impute=True)
+    cv_baseline[('A', 'escitalopram', 'randomized')]
     # Save with date/time stamp
     dump(cv_baseline, filename=tstamp('cv_baseline'))
     del cv_baseline
@@ -467,6 +521,7 @@ if refit_iv_alts:
     cv_alts = {}
     for k1, id in samp.items():
         for k2, dat in alts.items():
+            print(k1, k2)
             # Prepare X/y
             X = dat.loc[id].copy()
             y = hdremit.loc[id].copy()
@@ -475,3 +530,6 @@ if refit_iv_alts:
             # Run repeated CV
             cv_alts[(k1, k2)] = evaluate_model(X, y, reps=n_reps, impute=True)
     dump(cv_alts, filename=tstamp('cv_alts'))
+
+print('Finished.')
+
