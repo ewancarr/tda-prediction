@@ -28,9 +28,9 @@ def cv_metric(arr, reps=100, squash=False):
         return((p50, p2, p98))
 
 # Load latest estimates from grid search
-cv_landscapes = load('saved/2021_11_25/2021_11_25_004542_cv_landscapes.joblib')
-cv_baseline = load('saved/2021_11_25/2021_11_24_231226_cv_baseline.joblib')
-cv_alts = load('saved/2021_11_25/2021_11_25_014753_cv_alts.joblib')
+cv_landscapes = load('saved/2021_12_01/2021_12_01_125731_cv_landscapes.joblib')
+cv_baseline = load('saved/2021_12_01/2021_12_01_130938_cv_baseline.joblib')
+cv_alts = load('saved/2021_12_01/2021_12_01_163825_cv_alts.joblib')
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -194,7 +194,7 @@ for i in all_cv:
     est = {}
     for k, v in i['cv'].items():
         if k != 'estimator':
-            est[k] = cv_metric(v, reps=10, squash=False)
+            est[k] = cv_metric(v, reps=100, squash=False)
     i['est'] = est
 
 
@@ -208,6 +208,41 @@ for i in all_cv:
     tab.append(row | i['est'])
 tab = pd.DataFrame(tab).sort_values(rq, axis='rows')
 tab.to_excel('~/cv_results.xlsx')
+
+# Calculate sensitivity and specificity at different thresholds ---------------
+
+def sensitivity(tp, fn):
+    return(tp / (tp + fn))
+
+def specificity(tn, fp):
+    return(tn / (tn + fp))
+
+def by_threshold(row, threshold=10, what='sens'):
+    tp = row['test_tp' + str(threshold)]
+    tn = row['test_tn' + str(threshold)]
+    fp = row['test_fp' + str(threshold)]
+    fn = row['test_fn' + str(threshold)]
+    if what == 'sens':
+        return((sensitivity(tp[0], fn[0]),
+                sensitivity(tp[1], fn[1]),
+                sensitivity(tp[2], fn[2])))
+    else:
+        return((specificity(tn[0], fp[0]),
+                specificity(tn[1], fp[1]),
+                specificity(tn[2], fp[2])))
+
+for measure in ['sens', 'spec']:
+    for t in [10, 20, 30, 40, 60, 70, 80, 90]:
+        tab[measure + '_' + str(t)] = tab.apply(by_threshold,
+                                                threshold=t,
+                                                what=measure,
+                                                axis=1)
+
+
+
+tab[['method', 'sample',
+     'test_sens', 'test_spec'] + list(tab.columns[tab.columns.str.startswith('spec_')])].\
+    applymap(lambda i: i[0]).to_excel('~/summary.xlsx')
 
 # Make figures ----------------------------------------------------------------
 
