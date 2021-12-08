@@ -32,6 +32,9 @@ cv_landscapes = load('saved/2021_12_01/2021_12_01_125731_cv_landscapes.joblib')
 cv_baseline = load('saved/2021_12_01/2021_12_01_130938_cv_baseline.joblib')
 cv_alts = load('saved/2021_12_01/2021_12_01_163825_cv_alts.joblib')
 
+for k in samp.keys():
+    print(k)
+
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
 # ┃                             List of features                              ┃
@@ -239,10 +242,23 @@ for measure in ['sens', 'spec']:
                                                 axis=1)
 
 
-
-tab[['method', 'sample',
-     'test_sens', 'test_spec'] + list(tab.columns[tab.columns.str.startswith('spec_')])].\
+tab[['method',
+     'sample',
+     'test_sens',
+     'test_spec'] + list(tab.columns[tab.columns.str.startswith('spec_')])].\
     applymap(lambda i: i[0]).to_excel('~/summary.xlsx')
+
+# Select thresholds for sensitivity/specificity -------------------------------
+
+# A, Escitalopram = 40%
+# B, Nortriptyline = 30%
+# C, Combined = 40%
+
+t40 = tab['sample'].isin(['A', 'C'])
+t30 = tab['sample'] == 'B'
+for v in ['spec', 'sens']:
+    tab.loc[t40, 'test_' + v + 'b'] = tab.loc[t40, v + '_40']
+    tab.loc[t30, 'test_' + v + 'b'] = tab.loc[t30, v + '_30']
 
 # Make figures ----------------------------------------------------------------
 
@@ -342,27 +358,6 @@ fig.supxlabel('Number of weeks')
 plt.tight_layout()
 plt.savefig('figures/auc.png', dpi=600)
 
-# Calculate other metrics, based on TP, TN, FP, FN ----------------------------
-
-def accuracy(tn, tp, fn, fp):
-    return((tp + tn) / (tp + tn + fp + fn))
-
-def fpr(tn, tp, fn, fp):
-    return((tp + tn) / (tp + tn + fp + fn))
-
-d['test_acc'] = None
-d['test_acc'] = d['test_acc'].astype(object)
-for k, v in d.iterrows():
-    for i, lab in zip([0, 1, 2], ['est', 'lo', 'hi']):
-        tn = v['test_tn'][i]
-        tp = v['test_tp'][i]
-        fn = v['test_fn'][i]
-        fp = v['test_fp'][i]
-        d.loc[k, 'acc_' + lab] = accuracy(tn, tp, fn, fp)
-        d.loc[k, '_' + lab] = accuracy(tn, tp, fn, fp)
-
-d['test_acc'] = d[['acc_est', 'acc_lo', 'acc_hi']].apply(tuple, axis=1)
-
 # Make table -----------------------------------------------------------------
 
 d['weeks'] = d['weeks'].astype(int)
@@ -382,86 +377,102 @@ for m in ['auc', 'acc', 'sens', 'spec', 'ppv', 'npv']:
     t = make_tab(d, m)
     t.to_excel('~/res/' + m + '.xlsx')
     
-
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
 # ┃                    Plot best AUC for each week of data                    ┃
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-# TODO: UPDATE THIS FOR NEW METRICS
+picks = ['test_auc', 'test_accbal', 'test_npv', 'test_sensb', 'test_specb']
+best = {}
+for p in picks:
+    bysamp = d.copy().join(d.groupby(['sample', 'weeks'])[p]. \
+                         apply(lambda x: max(x, key=lambda i:i[0])),
+                         on=['sample', 'weeks'], rsuffix='_best')
+    best[p] = bysamp.loc[bysamp[p] == bysamp[p + '_best'],
+                    ['sample', 'weeks', 'm', p + '_best']]. \
+        sort_values(['weeks', 'sample'])
 
-d['best'] = d.groupby(['sample', 'max_week'])['auc'].transform(max)
-best = d[d['best'] == d['auc']][['sample', 'max_week', 'method',
-                                 'auc', 'lo', 'hi']]. \
-            sort_values(['sample', 'max_week'])
-best['x'] = best['max_week'].astype('int')
+def convert_title(k):
+    return(np.select([k == 'test_auc',
+                      k == 'test_accbal',
+                      k == 'test_npv',
+                      k == 'test_sensb',
+                      k == 'test_specb'],
+                     ['AUC',
+                      'Balanced accuracy',
+                      'NPV',
+                      'Sensitivity',
+                      'Specificity']))
 
-best = pd.DataFrame({'method': ['bl', 'rm', 'lsrm', 'gc'],
-                     'label': ['Baseline only',
-                         'Repeated measures',
-                         'Repeated measures + Landscapes',
-                         'Growth curves'],
-                     'col': [pal[7], pal[3], pal[4], pal[2]]}). \
-                             merge(best, on='method')
+for k, v in best.items():
+    v['mark'] = np.select([v['sample'] == 'A',
+                           v['sample'] == 'B',
+                           v['sample'] == 'C'],
+                          ['o', '^', 's'])
+    v['col'] = np.select([v['sample'] == 'A',
+                          v['sample'] == 'B',
+                          v['sample'] == 'C'],
+                         ['tab:red', 'tab:green', 'tab:blue'])
+    v['jitter'] = np.select([v['sample'] == 'A',
+                             v['sample'] == 'B',
+                             v['sample'] == 'C'],
+                            [-0.1, 0, 0.1])
 
-best['method'] = best['method'].str.upper()
-best['m'] = np.select([best['sample'] == 'A',
-                       best['sample'] == 'B',
-                       best['sample'] == 'C'],
-                       ['o', '^', 's'])
-best['jitter'] = np.select([best['sample'] == 'A',
-                           best['sample'] == 'B',
-                           best['sample'] == 'C'],
-                       [-0.1, 0, 0.1])
-best.sort_values(['sample', 'x'], inplace=True)
-
-fig, ax = plt.subplots(figsize=(7, 5))
-for label, df in best.groupby('sample'):
-    for (x, y, lo, hi, method, c, m, j) in zip(df['x'],
-                                               df['auc'],
-                                               df['lo'],
-                                               df['hi'],
-                                               df['method'],
-                                               df['col'],
-                                               df['m'],
-                                               df['jitter']):
-        print(c)
-        ax.scatter(x=x+j, y=y, color=c, marker=m, label=None, s=45)
-        ax.text(x+j, y + 0.008,
-                method,
-                ha='center',
-                va='center',
-                size=9,
-                label=None)
-        ax.vlines(x=x+j, ymin=lo, ymax=hi, colors=c)
-    df['xj'] = df['x'] + df['jitter']
-    ax.plot('xj', 'auc', data=df, color='gray', zorder=0, label=label)
-ax.set_xticks([0, 2, 4, 6])
-ax.set_yticks([0.5, 0.6, 0.7, 0.8, 0.9])
-ax.set_ylim(0.55, 0.95)
-plt.tick_params(axis='x', bottom=False)
-leg = [plt.Line2D([0], [0], marker='^', color='gray', label='Nortriptyline'),
-       plt.Line2D([0], [0], marker='o', color='gray', label='Escitalopram'),
-       plt.Line2D([0], [0], marker='s', color='gray', label='Combined')]
-plt.legend(handles=leg, loc='upper left')
-plt.xlabel('Number of weeks')
-plt.figtext(0.05, 0.03,
-        'BL = baseline only; GC = growth curves; RM = repeated measures; LSRM = landscapes and repeated measures.',
-        c='gray',
-        wrap=True, horizontalalignment='left', fontsize=9)
-plt.ylabel('AUC')
+# Plot for AUC, balanced accuracy, NPV
+fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(9, 11))
+for (var, dat), ax in zip(best.items(), axes.flatten()):
+    dat['value'] = [i[0] for i in dat[var + '_best']]
+    dat['lo'] = [i[1] for i in dat[var + '_best']]
+    dat['hi'] = [i[2] for i in dat[var + '_best']]
+    for label, df in dat.groupby('sample'):
+        for (x, y, lo, hi, method, mark, j, col) in zip(df['weeks'],
+                                                        df['value'],
+                                                        df['lo'],
+                                                        df['hi'],
+                                                        df['m'],
+                                                        df['mark'],
+                                                        df['jitter'],
+                                                        df['col']):
+            ax.scatter(x=x+j, y=y, marker=mark, label=None, s=45, c=col)
+            ax.text(x+j, y + 0.01,
+                    method,
+                    ha='center',
+                    va='center',
+                    size=9,
+                    label=None)
+            ax.vlines(x=x+j, ymin=lo, ymax=hi, colors=col)
+        df['xj'] = df['weeks'] + df['jitter']
+        ax.plot('xj', 'value', data=df, color=col, zorder=0, label=label)
+        ax.set_title(convert_title(var))
+        leg = [plt.Line2D([0], [0], marker='^', color='tab:green', label='Nortriptyline'),
+               plt.Line2D([0], [0], marker='o', color='tab:red', label='Escitalopram'),
+               plt.Line2D([0], [0], marker='s', color='tab:blue', label='Combined')]
+        ax.legend(handles=leg, loc='upper left')
+    ax.set_xticks([0, 2, 4, 6])
+    # ax.set_yticks([0.5, 0.6, 0.7, 0.8, 0.9])
+    ax.set_ylim(0.5, 0.90)
+    ax.tick_params(axis='x', bottom=False)
+# plt.figtext(0.05, 0.03,
+#         'BL = baseline only; GC = growth curves; RM = repeated measures; LSRM = landscapes and repeated measures.',
+#         c='gray',
+#         wrap=True, horizontalalignment='left', fontsize=9)
+# plt.ylabel('AUC')
+ax.set_xlabel('Number of weeks')
 plt.tight_layout()
-plt.subplots_adjust(bottom=0.2)
+# plt.subplots_adjust(bottom=0.1)
+axes[-1, -1].axis('off')
 plt.savefig('figures/best.png', dpi=300)
 
-def get_color(c):
-    return (str(
-        np.select([c == 'A', c == 'B', c == 'C'],
-                  ['tab:blue', 'tab:green', 'tab:purple'])))
+# Make table of 'best' results ------------------------------------------------
 
-
-def get_linetype(b):
-    return (str(np.select([b == 'baseline', b == 'nobaseline'],
-                          ['o--', '.-'])))
+tb = {}
+for k, v in best.items():
+    tb[k] = v.drop(labels=['mark', 'col', 'jitter',
+                                 'value', 'lo', 'hi'],
+                         axis=1). \
+        set_index(['sample', 'weeks']) 
+    tb[k].iloc[:, 1] = tb[k].iloc[:, 1]. \
+        apply(lambda x: f'{x[0]:.3f} [{x[1]:.3f}, {x[2]:.3f}]')
+pd.concat(tb, axis=1).to_excel('~/checkme.xlsx')
 
