@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 from joblib import load
 
-def cv_metric(fit, reps=100):
+def cv_metric(fit, what='test_score', reps=100):
     fold_means = [np.nanmean(i) 
-            for i in np.array_split(fit['test_score'], reps)]
+            for i in np.array_split(fit[what], reps)]
     return(np.percentile(fold_means, [50, 2, 98]))
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -44,25 +44,28 @@ best.pivot_table(index=['sample', 'drug', 'random'],
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-cv_landscapes = load('saved/2021_08_09/2021_08_11_082130_outer_cv.joblib')
-_, cv_gc = load('saved/2021_08_09/2021_08_09_031950_outer_cv.joblib')
+cv_landscapes = load('saved/2022-06-15 50 reps/2022_06_15_030446_cv_landscapes.joblib')
+cv_gc = load('saved/2022-06-15 50 reps/2022_06_15_045105_cv_alts.joblib')
 
 # Landscape variables
-cv = []
+cv = {}
 for k, v in cv_landscapes.items():
-    p50, p2, p98 = cv_metric(v, reps=50)
-    cell = f'{p50:.3f} [{p2:.3f}, {p98:.3f}]'
-    cv.append({
-        'sample': k[0][0],
-        'drug': k[0][1],
-        'random': k[0][2],
-        'keep_rm': k[1],
-        'max_week': int(k[2]),
-        'auc': p50,
-        'lo': p2,
-        'hi': p98,
-        'cell': cell})
-cv = pd.DataFrame(cv)
+    # Get model information
+    res['sample'] = k[0][0],
+    res['drug'] = k[0][1],
+    res['random'] = k[0][2],
+    res['keep_rm' ] = k[1],
+    res['max_week'] = int(k[2]),
+    # Get CV metrics
+    res = {}
+    for met in [m for m  in list(v['cv']) if m.startswith('test_')]:
+        p50, p2, p98 = cv_metric(v['cv'], met, reps=50)
+        cell = f'{p50:.3f} [{p2:.3f}, {p98:.3f}]'
+        res[met] = (p50, p2, p98, cell)
+    cv[k] = res
+    CONTINUE
+
+cv[k]
 
 cv.pivot(index=['sample', 'drug', 'random', 'max_week'], 
          columns=['keep_rm'],

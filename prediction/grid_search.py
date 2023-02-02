@@ -23,12 +23,14 @@ from sklearn.metrics import (make_scorer, confusion_matrix,
                              accuracy_score,
                              balanced_accuracy_score)
 
+# Re-run grid search? Almost never.
 refit_grid_search = False
+# Re-run internal validation? Almost always.
 refit_iv_landscapes = True
 refit_iv_baseline = True
 refit_iv_alts = True
 select_subsample = False
-n_reps = 100
+n_reps = 50
 cores = 20
 grid_search = 'saved/2021_08_09/2021_08_08_153539_grid_search.joblib'
 
@@ -41,26 +43,21 @@ def tstamp(suffix):
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-# def fp(y_true, y_pred):
-#     return(confusion_matrix(y_true, y_pred)[0, 1])
 def fp(y_true, y_proba, threshold=0.5):
     y_pred = y_proba > threshold
     return(confusion_matrix(y_true, y_pred)[0, 1])
 
-# def fn(y_true, y_pred):
-#     return(confusion_matrix(y_true, y_pred)[1, 0])
+
 def fn(y_true, y_proba, threshold=0.5):
     y_pred = y_proba > threshold
     return(confusion_matrix(y_true, y_pred)[1, 0])
 
-# def tp(y_true, y_pred):
-#     return(confusion_matrix(y_true, y_pred)[1, 1])
+
 def tp(y_true, y_proba, threshold=0.5):
     y_pred = y_proba > threshold
     return(confusion_matrix(y_true, y_pred)[1, 1])
 
-# def tn(y_true, y_pred):
-#     return(confusion_matrix(y_true, y_pred)[0, 0])
+
 def tn(y_true, y_proba, threshold=0.5):
     y_pred = y_proba > threshold
     return(confusion_matrix(y_true, y_pred)[0, 0])
@@ -346,6 +343,33 @@ for k, v in samp.items():
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
+# ┃                     Load growth curve / RM parameters                     ┃
+# ┃                                                                           ┃
+# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+alts = {}
+for mw in [2, 4, 6]:
+    g = load('prediction/re_params/re_' + str(mw))
+    g.columns = [i[0] + '_' + i[1].split('_')[1] for i in g.columns]
+    g = baseline.merge(g, left_index=True, right_index=True, how='inner')
+    alts['gc_' + str(mw)] = g
+
+def reshape_rm(d, mw):
+    d = d[d['week'] <= mw].copy()
+    d['col'] = d['variable'] + '_w' + d['week'].astype('str')
+    return(d[['col', 'value']].pivot(columns='col', values='value'))
+
+for mw in [2, 4, 6]:
+    r = reshape_rm(replong, mw)
+    alts['rm_' + str(mw)] = baseline.merge(r,
+            left_index=True,
+            right_index=True,
+            how='inner')
+
+print(list(alts))
+
+# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+# ┃                                                                           ┃
 # ┃                      Define pipeline and parameters                       ┃
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
@@ -441,11 +465,14 @@ def evaluate_model(X, y, reps=50, impute=False, return_estimator=False):
 
 if refit_iv_landscapes:
     cv_landscapes = {}
+    # For each sample (A, B, C):
     for k, v in samp.items():
+        # For increasing weeks of data:
         for max_week in [2, 4, 6]:
-            # For increasing weeks of data
-            for keep_rm in [True, False]:
-                print(k, max_week, keep_rm)
+            # Fit models (1) landscapes only; (2) landscapes plus RM ----------
+            for plus in ['ls_only', 'plus_rm']:
+                keep_rm = True if plus == 'plus_rm' else False
+                print(k, max_week, plus)
                 # Prepare X/y
                 X = comb.loc[v].copy()
                 y = hdremit.loc[v].copy()
@@ -462,12 +489,28 @@ if refit_iv_landscapes:
                 # Generate landscape variables (once, rather than at each CV iteration)
                 landscapes = compute_topological_variables(X, **params)
                 # Remove features with zero VarianceThreshold
-                vt = VarianceThreshold()
-                feat = vt.fit_transform(landscapes)
+                feat = landscapes.loc[:, (landscapes.var() > 0)].copy()
                 # Run repeated CV
                 cv_landscapes[(k,
-                               keep_rm,
-                               max_week)] = evaluate_model(landscapes, y, reps=n_reps)
+                               plus,
+                               max_week)] = evaluate_model(feat, y, reps=n_reps)
+                # Fit models for (3) landscapes plus GC -----------------------
+                if plus == 'ls_only':
+                    # NOTE: We're jumping on the end of the above loop, by
+                    # using the existing landscape features, when 'keep_rm' is
+                    # False, and adding the corresponding growth parameters.
+                    print(k, max_week, 'plus_gc')
+                    # Get growth curve parameters
+                    growth_curve = alts['gc_' + str(max_week)].loc[v]
+                    slopes_and_intercepts = [col for col in growth_curve if col.endswith(('_int', '_t1', '_t2'))]
+                    # Merge with baseine variables
+                    baseline_only = X.loc[:, ~X.columns.str.contains('_w[0-9]+')]
+                    feat = baseline_only.merge(growth_curve[slopes_and_intercepts],
+                                               left_index=True, right_index=True, how='inner')
+
+                    cv_landscapes[(k,
+                                   'plus_gc',
+                                   max_week)] = evaluate_model(feat, y, reps=n_reps)
     # Save with date/time stamp
     dump(cv_landscapes, filename=tstamp('cv_landscapes'))
     del cv_landscapes
@@ -494,27 +537,6 @@ if refit_iv_baseline:
 # ┃           Fit models for growth curves / repeated measures only           ┃
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-
-# Load growth curve parameters ------------------------------------------------
-alts = {}
-for mw in [2, 4, 6]:
-    g = load('prediction/re_params/re_' + str(mw))
-    g.columns = [i[0] + '_' + i[1].split('_')[1] for i in g.columns]
-    g = baseline.merge(g, left_index=True, right_index=True, how='inner')
-    alts['gc_' + str(mw)] = g
-
-# Define sets of 'raw' repeated measures --------------------------------------
-def reshape_rm(d, mw):
-    d = d[d['week'] <= mw].copy()
-    d['col'] = d['variable'] + '_w' + d['week'].astype('str')
-    return(d[['col', 'value']].pivot(columns='col', values='value'))
-
-for mw in [2, 4, 6]:
-    r = reshape_rm(replong, mw)
-    alts['rm_' + str(mw)] = baseline.merge(r,
-            left_index=True,
-            right_index=True,
-            how='inner')
 
 # Fit models for each ---------------------------------------------------------
 if refit_iv_alts:

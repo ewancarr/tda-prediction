@@ -5,6 +5,7 @@
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from joblib import load
@@ -19,7 +20,7 @@ baseline = load(inp / 'baseline.joblib')
 replong, repwide = load(inp / 'repmea.joblib')
 samp = load('samp.joblib')
 
-def cv_metric(arr, reps=100, squash=False):
+def cv_metric(arr, reps=1000, squash=False):
     fold_means = [np.nanmean(i) for i in np.array_split(arr, reps)]
     p50, p2, p98 = np.percentile(fold_means, [50, 2, 98])
     if squash:
@@ -28,9 +29,9 @@ def cv_metric(arr, reps=100, squash=False):
         return((p50, p2, p98))
 
 # Load latest estimates from grid search
-cv_landscapes = load('saved/2021_12_01/2021_12_01_125731_cv_landscapes.joblib')
-cv_baseline = load('saved/2021_12_01/2021_12_01_130938_cv_baseline.joblib')
-cv_alts = load('saved/2021_12_01/2021_12_01_163825_cv_alts.joblib')
+cv_landscapes = load('saved/2022-06-15 50 reps/2022_06_15_030446_cv_landscapes.joblib')
+cv_baseline = load('saved/2022-06-15 50 reps/2022_06_15_031024_cv_baseline.joblib')
+cv_alts = load('saved/2022-06-15 50 reps/2022_06_15_045105_cv_alts.joblib')
 
 for k in samp.keys():
     print(k)
@@ -44,41 +45,44 @@ for k in samp.keys():
 # This code checks that each variable used in our analysis is listed in 
 # Supplementary Table 1, on Google Sheets.
 
-url = 'https://docs.google.com/spreadsheets/d/1FApFC2HQJXNFdjYSQ7CLx7uss_eCsTEubsIMQTm9R_o/export?format=csv'
-lookup = pd.read_csv(url)
+def check_variables():
+    url = 'https://docs.google.com/spreadsheets/d/1FApFC2HQJXNFdjYSQ7CLx7uss_eCsTEubsIMQTm9R_o/export?format=csv'
+    lookup = pd.read_csv(url)
 
-# Check baseline variables ----------------------------------------------------
-in_table = list(lookup['Variable*'].dropna())
-in_baseline = list(baseline)
-print('Variables in baseline dataset but not in Supplementary Table 1:')
-for v in list(baseline):
-    if v not in in_table:
-        print(v)
+    # Check baseline variables ------------------------------------------------
+    in_table = list(lookup['Variable*'].dropna())
+    in_baseline = list(baseline)
+    print('Variables in baseline dataset but not in Supplementary Table 1:')
+    for v in list(baseline):
+        if v not in in_table:
+            print(v)
 
-print('Variables in Supplementary Table 1 that are not in baseline:')
-for v in in_table:
-    if v not in list(baseline):
-        print(v)
+    print('Variables in Supplementary Table 1 that are not in baseline:')
+    for v in in_table:
+        if v not in list(baseline):
+            print(v)
 
-# Check repeated measures variables -------------------------------------------
-    
-in_repeated = replong['variable'].unique()
-table_repeated = lookup.dropna(subset=['Measured repeatedly'],
-                                  axis='rows')[['Variable*',
-                                                'Measured repeatedly']]
-table_repeated = table_repeated[table_repeated['Measured repeatedly'] == 'Yes']['Variable*'].values
+    # Check repeated measures variables ---------------------------------------
+    in_repeated = replong['variable'].unique()
+    table_repeated = lookup.dropna(subset=['Measured repeatedly'],
+                                      axis='rows')[['Variable*',
+                                                    'Measured repeatedly']]
+    table_repeated = table_repeated[table_repeated['Measured repeatedly'] == 'Yes']['Variable*'].values
 
-print('Repeated measures variables that are not in Supplementary Table 1:')
-for v in list(in_repeated):
-    if v not in table_repeated:
-        print(v)
+    print('Repeated measures variables that are not in Supplementary Table 1:')
+    for v in list(in_repeated):
+        if v not in table_repeated:
+            print(v)
 
-print('Variables in Supplementary Table 1 that are not in the repeated measures dataset:')
-for v in table_repeated:
-    if v not in list(in_repeated):
-        print(v)
+    print('Variables in Supplementary Table 1 that are not in the repeated measures dataset:')
+    for v in table_repeated:
+        if v not in list(in_repeated):
+            print(v)
 
-len(table_repeated)
+    len(table_repeated)
+
+if False:
+    check_variables()
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -136,7 +140,7 @@ def calc_sum(x):
         return (f'{pct:2.0f}% (n={count}) [{n_miss}]')
 
 # NOTE: Haven't include 'smoker' because we didn't have this in the baseline
-# models.
+#       models.
 
 table1 = pooled[req].groupby('samp').agg(calc_sum).T
 for r in table1.index:
@@ -165,7 +169,7 @@ all_cv = []
 # Landscapes
 for k, v in cv_landscapes.items():
     all_cv.append({'sample': k[0][0],
-                   'method': 'landscapes',
+                   'method': f'landscapes',
                    'rm': k[1],
                    'weeks': k[2],
                    'cv': v['cv'],
@@ -174,9 +178,11 @@ for k, v in cv_landscapes.items():
 # Growth curves and repeated measures
 for k, v in cv_alts.items():
     method, wk = k[1].split('_')
+    rm = 'rm_only' if method == 'rm' else 'gc_only'
+    print(k, method, wk, rm)
     all_cv.append({'sample': k[0][0],
                    'method': method,
-                   'rm': method == 'rm',
+                   'rm': rm,
                    'weeks': wk,
                    'cv': v['cv'],
                    'feat': v['features'],
@@ -185,20 +191,39 @@ for k, v in cv_alts.items():
 for k, v in cv_baseline.items():
     all_cv.append({'sample': k[0][0],
                    'method': 'bl',
-                   'rm': False,
+                   'rm': 'baseline_only',
                    'weeks': 0,
                    'cv': v['cv'],
                    'feat': v['features'],
                    'sing': v['single']})
 
-
 # Calculate metrics, 95% CIs --------------------------------------------------
-for i in all_cv:
+def sensitivity(tp, fn):
+    return(tp / (tp + fn))
+
+def specificity(tn, fp):
+    return(tn / (tn + fp))
+
+n_reps = 50
+for i in tqdm(all_cv):
     est = {}
     for k, v in i['cv'].items():
         if k != 'estimator':
-            est[k] = cv_metric(v, reps=100, squash=False)
+            est[k] = cv_metric(v, reps=n_reps, squash=False)
+    est['test_spec30'] = cv_metric(specificity(i['cv']['test_tn30'],
+                                               i['cv']['test_fp30']),
+                                               reps=n_reps, squash=False)
+    est['test_sens30'] = cv_metric(specificity(i['cv']['test_tp30'],
+                                               i['cv']['test_fn30']),
+                                               reps=n_reps, squash=False)
+    est['test_spec40'] = cv_metric(specificity(i['cv']['test_tn40'],
+                                               i['cv']['test_fp40']),
+                                               reps=n_reps, squash=False)
+    est['test_sens40'] = cv_metric(specificity(i['cv']['test_tp40'],
+                                               i['cv']['test_fn40']),
+                                               reps=n_reps, squash=False)
     i['est'] = est
+
 
 
 # Combine into single table 
@@ -210,43 +235,40 @@ for i in all_cv:
         row[r] = i[r]
     tab.append(row | i['est'])
 tab = pd.DataFrame(tab).sort_values(rq, axis='rows')
-tab.to_excel('~/cv_results.xlsx')
+tab.to_excel('cv_results.xlsx')
 
 # Calculate sensitivity and specificity at different thresholds ---------------
 
-def sensitivity(tp, fn):
-    return(tp / (tp + fn))
+# NOTE: not using this, because better to derive sens/spec based on all
+# repetitions, as above. 
 
-def specificity(tn, fp):
-    return(tn / (tn + fp))
+# def by_threshold(row, threshold=10, what='sens'):
+#     tp = row['test_tp' + str(threshold)]
+#     tn = row['test_tn' + str(threshold)]
+#     fp = row['test_fp' + str(threshold)]
+#     fn = row['test_fn' + str(threshold)]
+#     if what == 'sens':
+#         return((sensitivity(tp[0], fn[0]),
+#                 sensitivity(tp[1], fn[1]),
+#                 sensitivity(tp[2], fn[2])))
+#     else:
+#         return((specificity(tn[0], fp[0]),
+#                 specificity(tn[1], fp[1]),
+#                 specificity(tn[2], fp[2])))
 
-def by_threshold(row, threshold=10, what='sens'):
-    tp = row['test_tp' + str(threshold)]
-    tn = row['test_tn' + str(threshold)]
-    fp = row['test_fp' + str(threshold)]
-    fn = row['test_fn' + str(threshold)]
-    if what == 'sens':
-        return((sensitivity(tp[0], fn[0]),
-                sensitivity(tp[1], fn[1]),
-                sensitivity(tp[2], fn[2])))
-    else:
-        return((specificity(tn[0], fp[0]),
-                specificity(tn[1], fp[1]),
-                specificity(tn[2], fp[2])))
-
-for measure in ['sens', 'spec']:
-    for t in [10, 20, 30, 40, 60, 70, 80, 90]:
-        tab[measure + '_' + str(t)] = tab.apply(by_threshold,
-                                                threshold=t,
-                                                what=measure,
-                                                axis=1)
+# for measure in ['sens', 'spec']:
+#     for t in [10, 20, 30, 40, 60, 70, 80, 90]:
+#         tab[measure + '_' + str(t)] = tab.apply(by_threshold,
+#                                                 threshold=t,
+#                                                 what=measure,
+#                                                 axis=1)
 
 
 tab[['method',
      'sample',
      'test_sens',
      'test_spec'] + list(tab.columns[tab.columns.str.startswith('spec_')])].\
-    applymap(lambda i: i[0]).to_excel('~/summary.xlsx')
+    applymap(lambda i: i[0]).to_excel('summary.xlsx')
 
 # Select thresholds for sensitivity/specificity -------------------------------
 
@@ -257,8 +279,8 @@ tab[['method',
 t40 = tab['sample'].isin(['A', 'C'])
 t30 = tab['sample'] == 'B'
 for v in ['spec', 'sens']:
-    tab.loc[t40, 'test_' + v + 'b'] = tab.loc[t40, v + '_40']
-    tab.loc[t30, 'test_' + v + 'b'] = tab.loc[t30, v + '_30']
+    tab.loc[t40, 'test_' + v + 'b'] = tab.loc[t40, 'test_' + v + '40']
+    tab.loc[t30, 'test_' + v + 'b'] = tab.loc[t30, 'test_' + v + '30']
 
 # Make figures ----------------------------------------------------------------
 
@@ -281,10 +303,15 @@ def lighten_color(color, amount=0.5):
     return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
 
 
-tab['m'] = np.select([(tab['method'] == 'landscapes') & tab['rm'],
-                      (tab['method'] == 'landscapes') & ~tab['rm'],
-                      True],
-                     ['LSRM', 'LS', tab['method'].str.upper()])
+feat_types = ['BL', 'GC', 'LS', 'LSGC', 'LSRM', 'RM']
+tab['m'] = np.select([(tab['method'] == 'bl') & (tab['rm'] == 'baseline_only'),
+                      (tab['method'] == 'gc') & (tab['rm'] == 'gc_only'),
+                      (tab['method'] == 'landscapes') & (tab['rm'] == 'ls_only'),
+                      (tab['method'] == 'landscapes') & (tab['rm'] == 'plus_gc'),
+                      (tab['method'] == 'landscapes') & (tab['rm'] == 'plus_rm'),
+                      (tab['method'] == 'rm') & (tab['rm'] == 'rm_only')],
+                     feat_types)
+
 tab.drop(labels=['method', 'rm', 'fit_time'], axis=1, inplace=True)
 
 pal = sns.color_palette()
@@ -293,14 +320,15 @@ d = tab.copy()
 # Set colors
 d['col'] = None
 d['col'] = d['col'].astype(object)
-for m, n, c, h in zip(['BL', 'RM', 'GC', 'LS', 'LSRM'],
+for m, n, c, h in zip(feat_types,
+                      CONTINUE HERE -- NEED TO UPDATE TO USE ALL 'FEAT_TYPES'
                       [0.75, -0.55, -0.185, 0.185, 0.55],
                       [7, 0, 4, 2, 3],
                       ['', '', '//', '', '']):
     d.loc[d.m == m, 'col'] = c
     d.loc[d.m == m, 'nudge'] = n
     d.loc[d.m == m, 'hatch'] = h
-d['xpos'] = d['weeks'].astype(int) + d['nudge']                           # type: ignore
+d['xpos'] = d['weeks'].astype(int) + d['nudge']
 d['color'] = [pal[i] for i in d['col']]
 
 # Extract AUC and CIs
@@ -360,23 +388,25 @@ plt.savefig('figures/auc.png', dpi=600)
 
 # Make table -----------------------------------------------------------------
 
-d['weeks'] = d['weeks'].astype(int)
+tab['weeks'] = tab['weeks'].astype(int)
+tab['sample'] = tab['sample'].astype(str)
 
-def make_tab(results, metric):
-    i = 'test_' + metric
-    for k, v in results.iterrows():
-        est, lo, hi = v[i]
-        results.loc[k, 'cell'] = f'{est:.3f} [{lo:.3f}, {hi:.3f}]'
-    tab = results[['sample', 'weeks', 'm', 'cell']]. \
-        pivot(index=['sample', 'm'],
-              columns='weeks',
-              values='cell')
-    return(tab)
+def make_cell(t):
+    return(f'{t[0]:.3f} [{t[1]:.3f}, {t[2]:.3f}]')
 
-for m in ['auc', 'acc', 'sens', 'spec', 'ppv', 'npv']:
-    t = make_tab(d, m)
-    t.to_excel('~/res/' + m + '.xlsx')
-    
+by = ['sample', 'weeks', 'm']
+selected_results = {}
+for v in ['test_auc', 'test_accbal', 'test_npv']:
+    selected_results[v] = tab[v].apply(make_cell)
+
+by_method = pd.concat([tab[by],
+                       pd.concat(selected_results, axis=1)], axis=1)
+
+by_method['weeks'] = by_method['weeks'].astype(int)
+by_method.sort_values(by, inplace=True)
+by_method = by_method[by_method['m'] != 'LS']
+by_method.set_index(by).to_excel('supplementary_table_3.xlsx')
+
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
 # ┃                    Plot best AUC for each week of data                    ┃
@@ -386,11 +416,11 @@ for m in ['auc', 'acc', 'sens', 'spec', 'ppv', 'npv']:
 picks = ['test_auc', 'test_accbal', 'test_npv', 'test_sensb', 'test_specb']
 best = {}
 for p in picks:
-    bysamp = d.copy().join(d.groupby(['sample', 'weeks'])[p]. \
-                         apply(lambda x: max(x, key=lambda i:i[0])),
-                         on=['sample', 'weeks'], rsuffix='_best')
+    bysamp = tab.copy().join(tab.groupby(['sample', 'weeks'])[p]. \
+                             apply(lambda x: max(x, key=lambda i:i[0])),
+                             on=['sample', 'weeks'], rsuffix='_best')
     best[p] = bysamp.loc[bysamp[p] == bysamp[p + '_best'],
-                    ['sample', 'weeks', 'm', p + '_best']]. \
+                         ['sample', 'weeks', 'm', p + '_best']]. \
         sort_values(['weeks', 'sample'])
 
 def convert_title(k):
@@ -422,6 +452,7 @@ for k, v in best.items():
 # Plot for AUC, balanced accuracy, NPV
 fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(9, 11))
 for (var, dat), ax in zip(best.items(), axes.flatten()):
+    dat['weeks'] = dat['weeks'].astype(int)
     dat['value'] = [i[0] for i in dat[var + '_best']]
     dat['lo'] = [i[1] for i in dat[var + '_best']]
     dat['hi'] = [i[2] for i in dat[var + '_best']]
@@ -450,22 +481,14 @@ for (var, dat), ax in zip(best.items(), axes.flatten()):
                plt.Line2D([0], [0], marker='s', color='tab:blue', label='Combined')]
         ax.legend(handles=leg, loc='upper left')
     ax.set_xticks([0, 2, 4, 6])
-    # ax.set_yticks([0.5, 0.6, 0.7, 0.8, 0.9])
     ax.set_ylim(0.5, 0.90)
     ax.tick_params(axis='x', bottom=False)
-# plt.figtext(0.05, 0.03,
-#         'BL = baseline only; GC = growth curves; RM = repeated measures; LSRM = landscapes and repeated measures.',
-#         c='gray',
-#         wrap=True, horizontalalignment='left', fontsize=9)
-# plt.ylabel('AUC')
 ax.set_xlabel('Number of weeks')
 plt.tight_layout()
-# plt.subplots_adjust(bottom=0.1)
 axes[-1, -1].axis('off')
 plt.savefig('figures/best.png', dpi=300)
 
 # Make table of 'best' results ------------------------------------------------
-
 tb = {}
 for k, v in best.items():
     tb[k] = v.drop(labels=['mark', 'col', 'jitter',
@@ -474,5 +497,32 @@ for k, v in best.items():
         set_index(['sample', 'weeks']) 
     tb[k].iloc[:, 1] = tb[k].iloc[:, 1]. \
         apply(lambda x: f'{x[0]:.3f} [{x[1]:.3f}, {x[2]:.3f}]')
-pd.concat(tb, axis=1).to_excel('~/checkme.xlsx')
+pd.concat(tb, axis=1).to_excel('~/supplementary_table_2.xlsx')
 
+
+# Calculate percentage improvement
+perc = best['test_auc'][['sample', 'weeks', 'm', 'value']]
+perc = perc.iloc[:3, :][['sample', 'value']]. \
+    rename({'value': 'baseline'}, axis=1). \
+    merge(perc, how='right', on='sample')
+perc['diff'] = perc['value'] - perc['baseline']
+perc['improv'] = 100 * (perc['diff'] / perc['value'])
+perc.set_index(['sample']).pivot(values=['improv', 'diff'], columns='weeks') 
+perc.set_index(['sample']).pivot(values='improv', columns='weeks').round(1)
+
+
+# Calculate response on MADRS by week 2 ---------------------------------------
+
+# (This is based on email from Raquel dated 2022-03-29).
+
+ss = replong[(replong.variable == 'madrs') & (replong.week < 3)]
+ss = pd.pivot(ss, columns='week', values='value')
+ss['resp_w2'] = (ss[0] - ss[2]) / ss[0]
+
+# By samples used in the paper
+for (letter, drug, rand), ids in samp.items():
+    print(drug, len(ids), ss.loc[ids]['resp_w2'].median().round(2))
+
+# By drug/randomisation
+comb = baseline[['drug', 'random']].merge(ss, left_index=True, right_index=True)
+comb.groupby(['drug', 'random']).agg(['mean', 'count'])

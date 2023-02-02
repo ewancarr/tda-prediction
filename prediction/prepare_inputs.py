@@ -18,8 +18,8 @@ inp = Path('data')
 outcomes = load(inp / 'outcomes.joblib')
 baseline = load(inp / 'baseline.joblib')
 replong, repwide = load(inp / 'repmea.joblib')
-persistence = load(inp / 'persistence.joblib')
-landscapes_prev = load(inp /  'landscapes_prev.joblib')
+persistence = load(Path('inputs') / 'persistence.joblib')
+landscapes_prev = load(Path('inputs') /  'landscapes_prev.joblib')
 
 # Format for keys, separated by '_':
 # id    baseline    type1   type2
@@ -99,7 +99,6 @@ for k, v in sets.items():
     sets[k] = v.loc[v.index.intersection(has_outcome), :]
 
 # Identify available sample size for each set ---------------------------------
-
 sizes = {}
 for k, v in sets.items():
     sizes[k] = len(v)
@@ -189,5 +188,3 @@ baseline.loc[persistence['betti_a_2'].index.intersection(outcomes.index), :][['d
     print(k, np.shape(v.loc[v.index.intersection(outcomes.index), :]))
 
 sets_by
-
-
