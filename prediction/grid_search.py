@@ -2,6 +2,7 @@
 # Author: Ewan Carr
 # Started: 2021-06-25
 
+import re
 from pathlib import Path
 from datetime import datetime
 from joblib import load, dump
@@ -22,6 +23,10 @@ from sklearn.metrics import (make_scorer, confusion_matrix,
                              recall_score, brier_score_loss,
                              accuracy_score,
                              balanced_accuracy_score)
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import warnings
+from functions import *
 
 # Re-run grid search? Almost never.
 refit_grid_search = False
@@ -30,223 +35,12 @@ refit_iv_landscapes = True
 refit_iv_baseline = True
 refit_iv_alts = True
 select_subsample = False
-n_reps = 50
+n_reps = 5
 cores = 20
 grid_search = 'saved/2021_08_09/2021_08_08_153539_grid_search.joblib'
 
 def tstamp(suffix):
     return(datetime.today().strftime('%Y_%m_%d_%H%M%S') + '_' + suffix + '.joblib')
-
-# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-# ┃                                                                           ┃
-# ┃                            Define functions                               ┃
-# ┃                                                                           ┃
-# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-
-def fp(y_true, y_proba, threshold=0.5):
-    y_pred = y_proba > threshold
-    return(confusion_matrix(y_true, y_pred)[0, 1])
-
-
-def fn(y_true, y_proba, threshold=0.5):
-    y_pred = y_proba > threshold
-    return(confusion_matrix(y_true, y_pred)[1, 0])
-
-
-def tp(y_true, y_proba, threshold=0.5):
-    y_pred = y_proba > threshold
-    return(confusion_matrix(y_true, y_pred)[1, 1])
-
-
-def tn(y_true, y_proba, threshold=0.5):
-    y_pred = y_proba > threshold
-    return(confusion_matrix(y_true, y_pred)[0, 0])
-
-
-def calc_npv(y_true, y_prob, threshold=0.5):
-    y_pred = y_prob > threshold
-    n_tn = int(tn(y_true, y_pred))
-    n_fn = int(fn(y_true, y_pred))
-    if n_tn == 0:
-        npv = np.nan
-    else:
-        with np.errstate(invalid='ignore'):
-            npv = np.mean(n_tn / (n_tn + n_fn))
-    return(npv)
-
-
-def calc_ppv(y_true, y_prob, threshold=0.5):
-    y_pred = y_prob > threshold
-    n_tp = int(tp(y_true, y_pred))
-    n_fp = int(fp(y_true, y_pred))
-    if n_tp == 0:
-        ppv = np.nan
-    else:
-        with np.errstate(invalid='ignore'):
-            ppv = np.mean(n_tp / (n_tp + n_fp))
-    return(ppv)
-
-
-def sens(y_true, y_prob, threshold):
-    y_pred = y_prob > threshold
-    return(recall_score(y_true, y_pred))
-
-
-def spec(y_true, y_prob, threshold):
-    y_pred = y_prob > threshold
-    return(recall_score(y_true, y_pred, pos_label=0))
-
-
-scorers = {'auc': 'roc_auc',
-           'sens': make_scorer(recall_score),
-           'spec': make_scorer(recall_score, pos_label=0),
-           'ppv': make_scorer(calc_ppv, needs_proba=True),
-           'npv': make_scorer(calc_npv, needs_proba=True),
-           'accbal': make_scorer(balanced_accuracy_score),
-           'acc': make_scorer(accuracy_score),
-           'tp': make_scorer(tp, needs_proba=True),
-           'tn': make_scorer(tn, needs_proba=True),
-           'fp': make_scorer(fp, needs_proba=True),
-           'fn': make_scorer(fn, needs_proba=True),
-           # TN
-           'tn10': make_scorer(tn, needs_proba=True, threshold=0.1),
-           'tn20': make_scorer(tn, needs_proba=True, threshold=0.2),
-           'tn30': make_scorer(tn, needs_proba=True, threshold=0.3),
-           'tn40': make_scorer(tn, needs_proba=True, threshold=0.4),
-           'tn60': make_scorer(tn, needs_proba=True, threshold=0.6),
-           'tn70': make_scorer(tn, needs_proba=True, threshold=0.7),
-           'tn80': make_scorer(tn, needs_proba=True, threshold=0.8),
-           'tn90': make_scorer(tn, needs_proba=True, threshold=0.9),
-           # TP
-           'tp10': make_scorer(tp, needs_proba=True, threshold=0.1),
-           'tp20': make_scorer(tp, needs_proba=True, threshold=0.2),
-           'tp30': make_scorer(tp, needs_proba=True, threshold=0.3),
-           'tp40': make_scorer(tp, needs_proba=True, threshold=0.4),
-           'tp60': make_scorer(tp, needs_proba=True, threshold=0.6),
-           'tp70': make_scorer(tp, needs_proba=True, threshold=0.7),
-           'tp80': make_scorer(tp, needs_proba=True, threshold=0.8),
-           'tp90': make_scorer(tp, needs_proba=True, threshold=0.9),
-           # FN
-           'fn10': make_scorer(fn, needs_proba=True, threshold=0.1),
-           'fn20': make_scorer(fn, needs_proba=True, threshold=0.2),
-           'fn30': make_scorer(fn, needs_proba=True, threshold=0.3),
-           'fn40': make_scorer(fn, needs_proba=True, threshold=0.4),
-           'fn60': make_scorer(fn, needs_proba=True, threshold=0.6),
-           'fn70': make_scorer(fn, needs_proba=True, threshold=0.7),
-           'fn80': make_scorer(fn, needs_proba=True, threshold=0.8),
-           'fn90': make_scorer(fn, needs_proba=True, threshold=0.9),
-           # FP
-           'fp10': make_scorer(fp, needs_proba=True, threshold=0.1),
-           'fp20': make_scorer(fp, needs_proba=True, threshold=0.2),
-           'fp30': make_scorer(fp, needs_proba=True, threshold=0.3),
-           'fp40': make_scorer(fp, needs_proba=True, threshold=0.4),
-           'fp60': make_scorer(fp, needs_proba=True, threshold=0.6),
-           'fp70': make_scorer(fp, needs_proba=True, threshold=0.7),
-           'fp80': make_scorer(fp, needs_proba=True, threshold=0.8),
-           'fp90': make_scorer(fp, needs_proba=True, threshold=0.9),
-           'brier': make_scorer(brier_score_loss,
-                                greater_is_better=False,
-                                needs_proba=True)}
-
-# def cv_metric(l, reps=50):
-#     if reps == 1:
-#         return(np.mean(l))
-#     else:
-#         fold_means = [np.mean(i) for i in np.array_split(l, reps)]
-#         return(np.percentile(fold_means, [50, 2, 98]))
-
-# def print_summary(l, reps):
-#     for k1, v1 in l.items():
-#         print(k1)
-#         for k2, v2 in v1['cv'].items():
-#             if k2 != 'estimator':
-#                 print(k2, cv_metric(v2, reps))
-
-def reshape(dat):
-    var = dat.columns.str.startswith('rep_')
-    rv = dat.loc[:, var]. \
-        melt(ignore_index=False)
-    rv[['_', 'var', 'item', 'week']] = rv['variable']. \
-        str.split('_', expand=True)
-    rv['w'] = rv['week'].str.extract(r'(?P<week>\d+$)').astype('int')
-    rv['var'] = rv['var'] + '_' + rv['item']
-    rv.drop(labels=['_', 'week', 'variable', 'item'], axis=1, inplace=True)
-    rv.sort_values(['subjectid', 'var', 'w'], inplace=True)
-    return((rv, var))
-
-def knn(dat):
-    # kNN imputation, but retaining column names
-    cols = dat.columns
-    index = dat.index
-    imp = KNNImputer(n_neighbors=5)
-    dat = imp.fit_transform(dat)
-    return(pd.DataFrame(dat, columns=cols, index=index))
-
-
-def compute_topological_variables(dat,
-                                  max_week=6,
-                                  mas=1e5,
-                                  fun='landscape',
-                                  dims=[0, 1, 2],
-                                  n_land=3,
-                                  bins=10,
-                                  keep_rm=False):
-
-    # Select repeated measures and reshape from WIDE to LONG format
-    rv, v = reshape(dat)
-
-    # For each participant, generate landscape variables
-    ls = {}
-    for k in rv.index[~rv.index.duplicated()]:
-        # Select this participant's rows
-        # Reshape into grid of 'weeks' vs. 'measures'
-
-        d = rv.loc[k, :]. \
-            pivot(columns='var', values='value', index='w'). \
-            loc[range(max_week + 1), :]. \
-            values
-
-        # Derive MDS components
-        mds = MDS(n_components=3, random_state=42)
-        d = mds.fit_transform(d.T)
-        # Construct landscapes
-        ac = gd.AlphaComplex(d)
-        simplex_tree = ac.create_simplex_tree(max_alpha_square=mas)
-        simplex_tree.compute_persistence()
-        if fun == 'landscape':
-            ps = {}
-            # Construct landscapes in required dimensions
-            for dim in dims:
-                D = simplex_tree.persistence_intervals_in_dimension(dim)
-                D = DiagramSelector(use=True,
-                                    point_type="finite").fit_transform([D])
-                if np.shape(D)[1] > 0:
-                    LS = Landscape(num_landscapes=n_land, resolution=bins)
-                    ps[dim] = LS.fit_transform(D)
-                else:
-                    ps[dim] = np.full((1, n_land*bins), 0)
-            ls[k] = np.hstack([v for _, v in ps.items()])
-
-    # Combine landscape variables for all participants
-    ls = pd.DataFrame({k: v[0] for k, v in ls.items()}).T
-    ls.set_axis(['X' + str(i) for i in ls.columns.values], axis=1, inplace=True)
-
-    mrg = {'left_index': True, 'right_index': True, 'how': 'inner'}
-    if keep_rm:
-        # If we're keeping the repeated measures, first ensure we exclude
-        # those measured beyond 'max_week'
-        c = dat.columns[v]
-        to_drop = np.array([])
-        for w in [i for i in range(0, 27) if i > max_week]:
-            to_drop = np.concatenate([to_drop,
-                                      c[c.str.contains('_w' + str(w) + '$')]])
-        rep = dat.drop(labels=to_drop, axis=1)
-        # Merge landscapes with [baseline + repeated measures]
-        X = rep.merge(ls, **mrg)
-    else:
-        # Merge landscapes with [baseline only]
-        X = dat.loc[:, ~v].merge(ls, **mrg)
-    return(X)
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -347,30 +141,31 @@ for k, v in samp.items():
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-alts = {}
-for mw in [2, 4, 6]:
-    g = load('prediction/re_params/re_' + str(mw))
-    g.columns = [i[0] + '_' + i[1].split('_')[1] for i in g.columns]
-    g = baseline.merge(g, left_index=True, right_index=True, how='inner')
-    alts['gc_' + str(mw)] = g
+# alts = {}
+# for mw in [2, 4, 6]:
+#     g = load('prediction/re_params/re_' + str(mw))
+#     g.columns = [i[0] + '_' + i[1].split('_')[1] for i in g.columns]
+#     g = baseline.merge(g, left_index=True, right_index=True, how='inner')
+#     alts['gc_' + str(mw)] = g
 
-def reshape_rm(d, mw):
-    d = d[d['week'] <= mw].copy()
-    d['col'] = d['variable'] + '_w' + d['week'].astype('str')
-    return(d[['col', 'value']].pivot(columns='col', values='value'))
+# def reshape_rm(d, mw):
+#     d = d[d['week'] <= mw].copy()
+#     d['col'] = d['variable'] + '_w' + d['week'].astype('str')
+#     return(d[['col', 'value']].pivot(columns='col', values='value'))
 
-for mw in [2, 4, 6]:
-    r = reshape_rm(replong, mw)
-    alts['rm_' + str(mw)] = baseline.merge(r,
-            left_index=True,
-            right_index=True,
-            how='inner')
+# for mw in [2, 4, 6]:
+#     r = reshape_rm(replong, mw)
+#     alts['rm_' + str(mw)] = baseline.merge(r,
+#             left_index=True,
+#             right_index=True,
+#             how='inner')
 
-print(list(alts))
+# print(list(alts))
+
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
-# ┃                      Define pipeline and parameters                       ┃
+# ┃          Define pipeline to tune persistence landscape variables          ┃
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
@@ -397,11 +192,13 @@ for land in [3, 5, 10, 12, 15]:
                                     ]
                                    })
 
-# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-# ┃                                                                           ┃
-# ┃              Run CV for tuning parameters, without repetition             ┃
-# ┃                                                                           ┃
-# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+#  ┌─────────────────────────────────────────────────────────┐ 
+#  │                                                         │
+#  │                Tune landscape parameters                │
+#  │                                                         │
+#  └─────────────────────────────────────────────────────────┘
+
+# NOTE: This is using 10-fold CV without repetition.
 
 if refit_grid_search:
     cv_inner = {}
@@ -439,36 +236,188 @@ else:
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-def evaluate_model(X, y, reps=50, impute=False, return_estimator=False):
+'''
+We're interested in the following options:
+
+    1. Repeated measures
+    2. Repeated measures + landscapes
+    3. Growth curves
+    4. Growth curves + landscapes
+
+    1 and 2 are handled with the '
+'''
+
+# CONTINUE HERE (2023-02-02) Write a new version than generates GC with CV:
+
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
+def fit_growth_curves(X):
+    import re
+    # Identify repeated measures
+    pattern = re.compile("^rep__")
+    repeated_measures = [bool(pattern.match(i)) for i in list(X)]
+
+    # Separate baseline vs. repeated measures columns
+    other = X.loc[:, [not i for i in repeated_measures]]
+    X = X.loc[:, repeated_measures]
+
+    # Select repeated measures, reshape to LONG format
+    X = X.melt(ignore_index=False)
+    X['week'] = X['variable'].str[-1:].astype('int')
+    X.reset_index(inplace=True)
+
+    # For each outcome, fit a growth curve
+    outcomes = set([re.search(r"^rep__(.*)__w.*", f).group(1) 
+                for f in X['variable'].unique()])
+
+    random_effects = []
+    for o in outcomes:
+        df = X[X.variable.str.contains(o)].dropna()
+        mdf = smf.mixedlm('value ~ week + np.power(week, 2)',
+                          df,
+                          groups=df['subjectid'], 
+                          re_formula='~ week + np.power(week, 2)')
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            mdf = mdf.fit()
+        re = pd.DataFrame(mdf.random_effects).T
+        re.columns = [o + i for i in ['_int', '_t', '_t2']]
+        random_effects.append(re)
+    # Append all random effects; merge with 'baseline' variables
+    return(other.merge(pd.concat(random_effects, axis=1),
+                       left_index=True,
+                       right_index=True))
+
+
+class GenerateGrowthCurves(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        return None
+    def fit(self, X=None, y=None):
+        return self
+    def transform(self, X=None):
+        return(fit_growth_curves(X))
+
+
+
+
+
+
+
+# def evaluate_model(X, y,
+#                    reps=50, gc=False, impute=False, return_estimator=False):
+#     features = X.columns
+#     if impute:
+#         X = knn(X)
+#     # Remove features with zero VarianceThreshold
+#     vt = VarianceThreshold()
+#     X = vt.fit_transform(X)
+#     # Run repeated CV
+#     clf = LogitNet(alpha=0.5,
+#                    cut_point=0,
+#                    n_splits=10,
+#                    random_state=42)
+#     rkf = RepeatedKFold(n_splits=10, n_repeats=reps, random_state=42)
+#     fit = cross_validate(clf,
+#                          X,
+#                          y,
+#                          cv=rkf,
+#                          scoring=scorers,
+#                          n_jobs=cores,
+#                          return_estimator=return_estimator)
+#     # Refit, once, to get feature importance
+#     single = clf.fit(X, y)
+#     return({'cv': fit, 'single': single, 'features': features})
+
+def evaluate_model(X, y,
+                   generate_curves=False,
+                   reps=50, impute=False, return_estimator=False):
     features = X.columns
-    if impute:
-        X = knn(X)
-    # Remove features with zero VarianceThreshold
-    vt = VarianceThreshold()
-    X = vt.fit_transform(X)
-    # Run repeated CV
-    clf = LogitNet(alpha=0.5,
-                   cut_point=0,
-                   n_splits=10,
-                   random_state=42)
+    # TODO: find cleaner way of having an optional step in the pipeline
+    if generate_curves:
+        pipe = Pipeline(steps=[
+            ('impute', FunctionTransformer(knn)),
+            ('growthcurves', GenerateGrowthCurves()),
+            ('zerovar', VarianceThreshold()),
+            ('estimator', LogitNet(alpha=0.5,
+                                   cut_point=0,
+                                   n_splits=10,
+                                   random_state=42))])
+    else:
+        pipe = Pipeline(steps=[
+            ('impute', FunctionTransformer(knn)),
+            ('zerovar', VarianceThreshold()),
+            ('estimator', LogitNet(alpha=0.5,
+                                   cut_point=0,
+                                   n_splits=10,
+                                   random_state=42))])
     rkf = RepeatedKFold(n_splits=10, n_repeats=reps, random_state=42)
-    fit = cross_validate(clf,
-                         X,
-                         y,
-                         cv=rkf,
-                         scoring=scorers,
+    fit = cross_validate(pipe, X, y,
+                         fit_params = {
+                         cv=rkf, scoring=scorers,
                          n_jobs=cores,
                          return_estimator=return_estimator)
     # Refit, once, to get feature importance
-    single = clf.fit(X, y)
+    single = pipe.fit(X, y)
     return({'cv': fit, 'single': single, 'features': features})
 
+def prepare_repeated(d, baseline, mw):
+    # Select repeated measures and merge with baseline variables
+    d = d[d['week'] <= mw].copy()
+    d['col'] = d['variable'] + '_w' + d['week'].astype('str')
+    r = d[['col', 'value']].pivot(columns='col', values='value')
+    return(baseline.merge(r, left_index=True, right_index=True, how='inner'))
+
 if refit_iv_landscapes:
-    cv_landscapes = {}
+    cv_results = {}
     # For each sample (A, B, C):
     for k, v in samp.items():
         # For increasing weeks of data:
         for max_week in [2, 4, 6]:
+
+            # Option 1) RM only ———————————————————————————————————————————————
+            X = prepare_repeated(replong, baseline, max_week).loc[v].copy()
+            y = hdremit.loc[v].copy()
+            if k[1] != 'both':
+                X.drop(labels=['escit'], axis=1, inplace=True)
+            cv_results[("1. RM only",
+                        k, max_week)] = evaluate_model(X, y, reps=n_reps)
+            # Option 2) RM + landscapes ———————————————————————————————————————
+            X = comb.loc[v].copy()
+            y = hdremit.loc[v].copy()
+            if k[1] != 'both':
+                X.drop(labels=['escit'], axis=1, inplace=True)
+            # Get best topological parameters from inner CV
+            params = cv_inner[(k,
+                               keep_rm,
+                               max_week)].best_params_['topo__kw_args']
+            params['keep_rm'] = True
+            params['max_week'] = max_week
+            # Generate landscape variables (once, rather than at each CV iteration)
+            X = compute_topological_variables(X, **params)
+            cv_results[("2. RM + LS", k, max_week)] = evaluate_model(X, y, reps=n_reps)
+            # Option 3: GC only ———————————————————————————————————————————————
+            # Prepare the repeated measures data
+            rm = replong.loc[v].copy()
+            rm = rm[rm['week'] <= max_week]
+            rm['col'] = rm['variable'] + '__w' + rm['week'].astype('str')
+            rm = rm[['col', 'value']].pivot(columns='col', values='value')
+            rm = rm.add_prefix('rep__')
+            # Merge with baseline data
+            rm = baseline.merge(rm, left_index=True, right_index=True, how='inner')
+            # Run CV, incorporating growth curves
+
+
+    ['rep_' + i for i in list(rm)]
+
+            return(baseline.merge(r, left_index=True, right_index=True, how='inner'))
+
+                # Run repeated CV
+                cv_landscapes[(k,
+                               plus,
+                               max_week)] = evaluate_model(feat, y, reps=n_reps)
+
+
             # Fit models (1) landscapes only; (2) landscapes plus RM ----------
             for plus in ['ls_only', 'plus_rm']:
                 keep_rm = True if plus == 'plus_rm' else False
@@ -478,7 +427,7 @@ if refit_iv_landscapes:
                 y = hdremit.loc[v].copy()
                 if k[1] != 'both':
                     X.drop(labels=['escit'], axis=1, inplace=True)
-                # Get best parameters from inner CV
+                # Get best topological parameters from inner CV
                 params = cv_inner[(k,
                                    keep_rm,
                                    max_week)].best_params_['topo__kw_args']

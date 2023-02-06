@@ -350,7 +350,6 @@ for k, v in persistence.items():
 # NOTE: the sample size differs slightly depending on the number of weeks
 #       selected.
 
-
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
 # ┃                                  Export                                   ┃
