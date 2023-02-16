@@ -2,8 +2,7 @@
 # Author: Ewan Carr
 # Started: 2021-06-25
 
-module load py-scikit-learn
-
+from mpi4py import MPI
 import re
 from pathlib import Path
 from datetime import datetime
@@ -28,7 +27,15 @@ from sklearn.metrics import (make_scorer, confusion_matrix,
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import warnings
+from sklearn.base import BaseEstimator, TransformerMixin
 from functions import *
+
+# Imports needed to run in parallel
+from dask_mpi import initialize
+initialize()
+
+from distributed import Client
+client = Client()
 
 # Re-run grid search? Almost never.
 refit_grid_search = False
@@ -38,7 +45,7 @@ refit_iv_baseline = True
 refit_iv_alts = True
 select_subsample = False
 n_reps = 5
-cores = 20
+cores = 4
 grid_search = 'saved/2021_08_09/2021_08_08_153539_grid_search.joblib'
 
 def tstamp(suffix):
@@ -245,14 +252,7 @@ We're interested in the following options:
     2. Repeated measures + landscapes
     3. Growth curves
     4. Growth curves + landscapes
-
-    1 and 2 are handled with the '
 '''
-
-# CONTINUE HERE (2023-02-02) Write a new version than generates GC with CV:
-
-from sklearn.base import BaseEstimator, TransformerMixin
-
 
 def fit_growth_curves(X):
     import re
@@ -301,39 +301,11 @@ class GenerateGrowthCurves(BaseEstimator, TransformerMixin):
         return(fit_growth_curves(X))
 
 
-
-
-
-
-
-# def evaluate_model(X, y,
-#                    reps=50, gc=False, impute=False, return_estimator=False):
-#     features = X.columns
-#     if impute:
-#         X = knn(X)
-#     # Remove features with zero VarianceThreshold
-#     vt = VarianceThreshold()
-#     X = vt.fit_transform(X)
-#     # Run repeated CV
-#     clf = LogitNet(alpha=0.5,
-#                    cut_point=0,
-#                    n_splits=10,
-#                    random_state=42)
-#     rkf = RepeatedKFold(n_splits=10, n_repeats=reps, random_state=42)
-#     fit = cross_validate(clf,
-#                          X,
-#                          y,
-#                          cv=rkf,
-#                          scoring=scorers,
-#                          n_jobs=cores,
-#                          return_estimator=return_estimator)
-#     # Refit, once, to get feature importance
-#     single = clf.fit(X, y)
-#     return({'cv': fit, 'single': single, 'features': features})
-
 def evaluate_model(X, y,
                    generate_curves=False,
-                   reps=50, impute=False, return_estimator=False):
+                   reps=50,
+                   impute=False, # Don't think this is having any effect
+                   return_estimator=False):
     features = X.columns
     # TODO: find cleaner way of having an optional step in the pipeline
     if generate_curves:
@@ -354,9 +326,11 @@ def evaluate_model(X, y,
                                    n_splits=10,
                                    random_state=42))])
     rkf = RepeatedKFold(n_splits=10, n_repeats=reps, random_state=42)
-    fit = cross_validate(pipe, X, y,
-                         fit_params = {
-                         cv=rkf, scoring=scorers,
+    fit = cross_validate(pipe,
+                         X=X,
+                         y=y,
+                         cv=rkf,
+                         scoring=scorers,
                          n_jobs=cores,
                          return_estimator=return_estimator)
     # Refit, once, to get feature importance
@@ -376,7 +350,6 @@ if refit_iv_landscapes:
     for k, v in samp.items():
         # For increasing weeks of data:
         for max_week in [2, 4, 6]:
-
             # Option 1) RM only ———————————————————————————————————————————————
             X = prepare_repeated(replong, baseline, max_week).loc[v].copy()
             y = hdremit.loc[v].copy()
@@ -406,8 +379,11 @@ if refit_iv_landscapes:
             rm = rm[['col', 'value']].pivot(columns='col', values='value')
             rm = rm.add_prefix('rep__')
             # Merge with baseline data
-            rm = baseline.merge(rm, left_index=True, right_index=True, how='inner')
+            X = baseline.merge(rm, left_index=True, right_index=True, how='inner')
+            y = hdremit.loc[v].copy()
             # Run CV, incorporating growth curves
+            cv_results[("3. GC only", k, max_week)] = evaluate_model(X, y, reps=n_reps)
+            # Option 4: GC + landscapes ---------------------------------------
 
 
     ['rep_' + i for i in list(rm)]
