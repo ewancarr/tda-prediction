@@ -5,6 +5,7 @@
 import numpy as np
 import pandas as pd
 from joblib import load
+from functions import *
 
 def cv_metric(fit, what='test_score', reps=100):
     fold_means = [np.nanmean(i) 
@@ -44,105 +45,31 @@ best.pivot_table(index=['sample', 'drug', 'random'],
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-cv_landscapes = load('saved/2022-06-15 50 reps/2022_06_15_030446_cv_landscapes.joblib')
-cv_gc = load('saved/2022-06-15 50 reps/2022_06_15_045105_cv_alts.joblib')
+cv_results = load('saved/2023_02_22_055807_cv_results.joblib')
 
-# Landscape variables
-cv = {}
-for k, v in cv_landscapes.items():
-    # Get model information
-    res['sample'] = k[0][0],
-    res['drug'] = k[0][1],
-    res['random'] = k[0][2],
-    res['keep_rm' ] = k[1],
-    res['max_week'] = int(k[2]),
-    # Get CV metrics
-    res = {}
+
+def make_cell(arr, reps=50):
+    outer_folds = [np.nanmean(i) for i in np.array_split(arr, reps)]
+    est = ['{:.3f}'.format(i) for i in np.percentile(outer_folds, [50, 2, 98])]
+    return(f'{est[0]} [{est[1]}, {est[2]}]')
+
+tab = []
+for k, v in cv_results.items():
+    row = {}
+    row['model'] = k[0]
+    row['sample'] = k[1][0]
+    row['drug'] = k[1][1]
+    row['random'] = k[1][2]
+    row['max_week'] = k[2]
     for met in [m for m  in list(v['cv']) if m.startswith('test_')]:
-        p50, p2, p98 = cv_metric(v['cv'], met, reps=50)
-        cell = f'{p50:.3f} [{p2:.3f}, {p98:.3f}]'
-        res[met] = (p50, p2, p98, cell)
-    cv[k] = res
-    CONTINUE
+        row[met] = make_cell(v['cv'][met])
+    tab.append(row)
 
-cv[k]
+res = pd.DataFrame(tab).sort_values(['model', 'sample', 'max_week'])
+res.to_excel('new_results.xlsx')
 
-cv.pivot(index=['sample', 'drug', 'random', 'max_week'], 
-         columns=['keep_rm'],
-         values='cell')
-
-# Growth curves and repeated measures
-gc = []
-for k, v in cv_gc.items():
-    p50, p2, p98 = cv_metric(v, reps=50)
-    method, max_week = k[1].split('_')
-    cell = f'{p50:.3f} [{p2:.3f}, {p98:.3f}]'
-    gc.append({
-        'sample': k[0][0],
-        'drug': k[0][1],
-        'random': k[0][2],
-        'method': method,
-        'max_week': int(max_week),
-        'auc': p50,
-        'lo': p2,
-        'hi': p98,
-        'cell': cell})
-gc = pd.DataFrame(gc)
-
-gc.pivot(index=['sample', 'drug', 'random', 'max_week'],
-        columns=['method'],
-        values=['cell'])
-
-# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-# ┃                                                                           ┃
-# ┃                  Get results from 'baseline only' models                  ┃
-# ┃                                                                           ┃
-# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-
-
-cv_baseline = load('saved/2021_11_18/2021_11_18_141553_cv_baseline.joblib')
-
-bl = []
-for k, v in cv_baseline.items():
-    p50, p2, p98 = cv_metric(v, reps=100)
-    cell = f'{p50:.3f} [{p2:.3f}, {p98:.3f}]'
-    bl.append({
-        'sample': k[0],
-        'drug': k[1],
-        'random': k[2],
-        'max_week': 0,
-        'auc': p50,
-        'lo': p2,
-        'hi': p98,
-        'cell': cell})
-bl = pd.DataFrame(bl)[['sample', 'drug', 'random', 'max_week', 'cell']].rename({'cell': 'bl'}, axis=1)
-bl.set_index(['sample', 'drug', 'random', 'max_week'], inplace=True)
-
-# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-# ┃                                                                           ┃
-# ┃                       Table comparing all estimates                       ┃
-# ┃                                                                           ┃
-# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-
-# Landscapes
-tab_ls = cv.pivot(index=['sample', 'drug', 'random', 'max_week'], 
-                  columns=['keep_rm'],
-                  values='cell')
-tab_ls.columns = ['ls', 'ls_rm']
-
-# Growth curves, repeated measures
-tab_gc = gc.pivot(index=['sample', 'drug', 'random', 'max_week'],
-                  columns=['method'],
-                  values=['cell'])
-tab_gc.columns = ['gc', 'rm']
-
-tab_bl = bl.pivot(index=['sample', 'drug', 'random', 'max_week'],
-                  columns=['method'],
-                  values=['cell'])
-tab_bl.columns = ['bl', 'rm']
-
-# Combined
-how = {'left_index': True, 'right_index': True, 'how': 'outer'}
-tab_all = pd.merge(tab_ls, tab_gc, **how)
-tab_all.to_excel('~/results.xlsx')
+res[['model', 'sample', 'drug', 'max_week', 'test_auc']]. \
+        pivot(index=['model', 'max_week'],
+              columns=['sample', 'drug'],
+              values='test_auc').round(3).to_excel('pivot.xlsx')
 

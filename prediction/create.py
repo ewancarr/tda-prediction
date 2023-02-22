@@ -2,7 +2,7 @@
 # Author: Ewan Carr
 # Started: 2021-06-25
 
-from mpi4py import MPI
+# from mpi4py import MPI
 import re
 from pathlib import Path
 from datetime import datetime
@@ -15,7 +15,7 @@ from sklearn.preprocessing import FunctionTransformer
 from sklearn.impute import KNNImputer
 from sklearn.manifold import MDS
 from sklearn.model_selection import (GridSearchCV,
-        RepeatedKFold, cross_validate)
+        KFold, RepeatedKFold, cross_validate)
 from glmnet import LogitNet
 import gudhi as gd
 from gudhi.representations import DiagramSelector, Landscape
@@ -30,22 +30,15 @@ import warnings
 from sklearn.base import BaseEstimator, TransformerMixin
 from functions import *
 
-# Imports needed to run in parallel
-from dask_mpi import initialize
-initialize()
-
-from distributed import Client
-client = Client()
-
 # Re-run grid search? Almost never.
 refit_grid_search = False
 # Re-run internal validation? Almost always.
 refit_iv_landscapes = True
-refit_iv_baseline = True
-refit_iv_alts = True
 select_subsample = False
-n_reps = 5
-cores = 4
+folds_inner = 5
+folds_outer = 5
+n_reps = 50
+cores = 16
 grid_search = 'saved/2021_08_09/2021_08_08_153539_grid_search.joblib'
 
 def tstamp(suffix):
@@ -256,6 +249,7 @@ We're interested in the following options:
 
 def fit_growth_curves(X):
     import re
+    import numpy as np
     # Identify repeated measures
     pattern = re.compile("^rep__")
     repeated_measures = [bool(pattern.match(i)) for i in list(X)]
@@ -292,15 +286,6 @@ def fit_growth_curves(X):
                        right_index=True))
 
 
-class GenerateGrowthCurves(BaseEstimator, TransformerMixin):
-    def __init__(self):
-        return None
-    def fit(self, X=None, y=None):
-        return self
-    def transform(self, X=None):
-        return(fit_growth_curves(X))
-
-
 def evaluate_model(X, y,
                    generate_curves=False,
                    reps=50,
@@ -315,7 +300,7 @@ def evaluate_model(X, y,
             ('zerovar', VarianceThreshold()),
             ('estimator', LogitNet(alpha=0.5,
                                    cut_point=0,
-                                   n_splits=10,
+                                   n_splits=folds_inner,
                                    random_state=42))])
     else:
         pipe = Pipeline(steps=[
@@ -323,9 +308,10 @@ def evaluate_model(X, y,
             ('zerovar', VarianceThreshold()),
             ('estimator', LogitNet(alpha=0.5,
                                    cut_point=0,
-                                   n_splits=10,
+                                   n_splits=folds_inner,
                                    random_state=42))])
-    rkf = RepeatedKFold(n_splits=10, n_repeats=reps, random_state=42)
+    rkf = RepeatedKFold(n_splits=folds_outer, n_repeats=reps, random_state=42)
+    # rkf = KFold(n_splits=3) # 
     fit = cross_validate(pipe,
                          X=X,
                          y=y,
@@ -344,141 +330,72 @@ def prepare_repeated(d, baseline, mw):
     r = d[['col', 'value']].pivot(columns='col', values='value')
     return(baseline.merge(r, left_index=True, right_index=True, how='inner'))
 
+mrg = {'left_index': True, 'right_index': True, 'how': 'inner'}
+
 if refit_iv_landscapes:
     cv_results = {}
-    # For each sample (A, B, C):
     for k, v in samp.items():
-        # For increasing weeks of data:
         for max_week in [2, 4, 6]:
-            # Option 1) RM only ———————————————————————————————————————————————
-            X = prepare_repeated(replong, baseline, max_week).loc[v].copy()
-            y = hdremit.loc[v].copy()
+            # Prepare baseline features
+            bl = baseline.loc[v].copy()
             if k[1] != 'both':
-                X.drop(labels=['escit'], axis=1, inplace=True)
-            cv_results[("1. RM only",
-                        k, max_week)] = evaluate_model(X, y, reps=n_reps)
-            # Option 2) RM + landscapes ———————————————————————————————————————
-            X = comb.loc[v].copy()
-            y = hdremit.loc[v].copy()
-            if k[1] != 'both':
-                X.drop(labels=['escit'], axis=1, inplace=True)
-            # Get best topological parameters from inner CV
-            params = cv_inner[(k,
-                               keep_rm,
-                               max_week)].best_params_['topo__kw_args']
-            params['keep_rm'] = True
-            params['max_week'] = max_week
-            # Generate landscape variables (once, rather than at each CV iteration)
-            X = compute_topological_variables(X, **params)
-            cv_results[("2. RM + LS", k, max_week)] = evaluate_model(X, y, reps=n_reps)
-            # Option 3: GC only ———————————————————————————————————————————————
-            # Prepare the repeated measures data
+                bl.drop(labels=['escit'], axis=1, inplace=True)
+
+            # Prepare repeated measures features
             rm = replong.loc[v].copy()
             rm = rm[rm['week'] <= max_week]
             rm['col'] = rm['variable'] + '__w' + rm['week'].astype('str')
             rm = rm[['col', 'value']].pivot(columns='col', values='value')
             rm = rm.add_prefix('rep__')
-            # Merge with baseline data
-            X = baseline.merge(rm, left_index=True, right_index=True, how='inner')
+
+            # Prepare landscape features
+            params = cv_inner[(k, False, max_week)].best_params_['topo__kw_args']
+            params['keep_rm'] = False
+            params['max_week'] = max_week
+
+            ls = compute_topological_variables(bl.merge(rm, **mrg).copy(), **params)
+            ls = ls.loc[:, ls.columns.str.startswith('X')]
+            ls.index.rename('subjectid', inplace=True)
+
+            # Prepare outcome
             y = hdremit.loc[v].copy()
+
+            # NOTE: We include baseline features in all models.
+
+            # Option 1) Baseline only —————————————————————————————————————————
+            print(k, max_week, '1. Baseline only')
+            X = bl.copy()
+            cv_results[("1. Baseline only",
+                        k, max_week)] = evaluate_model(X, y, reps=n_reps)
+
+            # Option 2) RM only ———————————————————————————————————————————————
+            print(k, max_week, '2. RM only')
+            X = bl.merge(rm, **mrg)
+            cv_results[("2. RM only",
+                        k, max_week)] = evaluate_model(X, y, reps=n_reps)
+
+            # Option 3) RM + landscapes ———————————————————————————————————————
+            print(k, max_week, '3. RM + LS')
+            X = bl.merge(rm, **mrg).merge(ls, **mrg)
+            cv_results[("3. RM + LS", k, max_week)] = evaluate_model(X, y, reps=n_reps)
+
+            # Option 3: GC only ———————————————————————————————————————————————
+            print(k, max_week, '4. GC only')
+            X = bl.merge(rm, **mrg)
             # Run CV, incorporating growth curves
-            cv_results[("3. GC only", k, max_week)] = evaluate_model(X, y, reps=n_reps)
-            # Option 4: GC + landscapes ---------------------------------------
+            cv_results[("4. GC only", 
+                        k, max_week)] = evaluate_model(X, y,
+                                                       reps=n_reps,
+                                                       generate_curves=True)
 
+            # Option 5: GC + landscapes ---------------------------------------
+            print(k, max_week, '5. GC + LS')
+            X = bl.merge(rm, **mrg).merge(ls, **mrg)
+            X = bl.merge(rm, **mrg).merge(ls, **mrg)
+            cv_results[("5. GC + LS",
+                        k, max_week)] = evaluate_model(X, y, 
+                                                       reps=n_reps,
+                                                       generate_curves=True)
+    dump(cv_results, filename=tstamp('cv_results'))
 
-    ['rep_' + i for i in list(rm)]
-
-            return(baseline.merge(r, left_index=True, right_index=True, how='inner'))
-
-                # Run repeated CV
-                cv_landscapes[(k,
-                               plus,
-                               max_week)] = evaluate_model(feat, y, reps=n_reps)
-
-
-            # Fit models (1) landscapes only; (2) landscapes plus RM ----------
-            for plus in ['ls_only', 'plus_rm']:
-                keep_rm = True if plus == 'plus_rm' else False
-                print(k, max_week, plus)
-                # Prepare X/y
-                X = comb.loc[v].copy()
-                y = hdremit.loc[v].copy()
-                if k[1] != 'both':
-                    X.drop(labels=['escit'], axis=1, inplace=True)
-                # Get best topological parameters from inner CV
-                params = cv_inner[(k,
-                                   keep_rm,
-                                   max_week)].best_params_['topo__kw_args']
-                params['keep_rm'] = keep_rm
-                params['max_week'] = max_week
-                # Impute missing values
-                X = knn(X)
-                # Generate landscape variables (once, rather than at each CV iteration)
-                landscapes = compute_topological_variables(X, **params)
-                # Remove features with zero VarianceThreshold
-                feat = landscapes.loc[:, (landscapes.var() > 0)].copy()
-                # Run repeated CV
-                cv_landscapes[(k,
-                               plus,
-                               max_week)] = evaluate_model(feat, y, reps=n_reps)
-                # Fit models for (3) landscapes plus GC -----------------------
-                if plus == 'ls_only':
-                    # NOTE: We're jumping on the end of the above loop, by
-                    # using the existing landscape features, when 'keep_rm' is
-                    # False, and adding the corresponding growth parameters.
-                    print(k, max_week, 'plus_gc')
-                    # Get growth curve parameters
-                    growth_curve = alts['gc_' + str(max_week)].loc[v]
-                    slopes_and_intercepts = [col for col in growth_curve if col.endswith(('_int', '_t1', '_t2'))]
-                    # Merge with baseine variables
-                    baseline_only = X.loc[:, ~X.columns.str.contains('_w[0-9]+')]
-                    feat = baseline_only.merge(growth_curve[slopes_and_intercepts],
-                                               left_index=True, right_index=True, how='inner')
-
-                    cv_landscapes[(k,
-                                   'plus_gc',
-                                   max_week)] = evaluate_model(feat, y, reps=n_reps)
-    # Save with date/time stamp
-    dump(cv_landscapes, filename=tstamp('cv_landscapes'))
-    del cv_landscapes
-
-# Fit 'baseline only' model ---------------------------------------------------
-if refit_iv_baseline:
-    cv_baseline = {}
-    for k, v in samp.items():
-        print(k)
-        # Prepare X/y
-        X = baseline.loc[v].copy()
-        y = hdremit.loc[v].copy()
-        if k[1] != 'both':
-            X.drop(labels=['escit'], axis=1, inplace=True)
-        # Run repeated CV
-        cv_baseline[k] = evaluate_model(X, y, n_reps, impute=True)
-    cv_baseline[('A', 'escitalopram', 'randomized')]
-    # Save with date/time stamp
-    dump(cv_baseline, filename=tstamp('cv_baseline'))
-    del cv_baseline
-
-# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-# ┃                                                                           ┃
-# ┃           Fit models for growth curves / repeated measures only           ┃
-# ┃                                                                           ┃
-# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-
-# Fit models for each ---------------------------------------------------------
-if refit_iv_alts:
-    cv_alts = {}
-    for k1, id in samp.items():
-        for k2, dat in alts.items():
-            print(k1, k2)
-            # Prepare X/y
-            X = dat.loc[id].copy()
-            y = hdremit.loc[id].copy()
-            if k1[1] != 'both':
-                X.drop(labels=['escit'], axis=1, inplace=True)
-            # Run repeated CV
-            cv_alts[(k1, k2)] = evaluate_model(X, y, reps=n_reps, impute=True)
-    dump(cv_alts, filename=tstamp('cv_alts'))
-
-print('Finished.')
-
+#  END

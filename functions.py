@@ -9,6 +9,7 @@ from sklearn.metrics import (make_scorer, confusion_matrix,
                              accuracy_score,
                              balanced_accuracy_score)
 from gudhi.representations import DiagramSelector, Landscape
+from sklearn.base import BaseEstimator, TransformerMixin
 
 #  ┌─────────────────────────────────────────────────┐ 
 #  │                                                 │
@@ -128,14 +129,11 @@ scorers = {'auc': 'roc_auc',
 #  └─────────────────────────────────────────────────────┘
 
 def reshape(dat):
-    var = dat.columns.str.startswith('rep_')
-    rv = dat.loc[:, var]. \
-        melt(ignore_index=False)
-    rv[['_', 'var', 'item', 'week']] = rv['variable']. \
-        str.split('_', expand=True)
+    var = dat.columns.str.startswith('rep__')
+    rv = dat.loc[:, var].melt(ignore_index=False)
+    rv[['_', 'var', 'week']] = rv['variable'].str.split('__', expand=True)
     rv['w'] = rv['week'].str.extract(r'(?P<week>\d+$)').astype('int')
-    rv['var'] = rv['var'] + '_' + rv['item']
-    rv.drop(labels=['_', 'week', 'variable', 'item'], axis=1, inplace=True)
+    rv.drop(labels=['_', 'week', 'variable'], axis=1, inplace=True)
     rv.sort_values(['subjectid', 'var', 'w'], inplace=True)
     return((rv, var))
 
@@ -216,4 +214,16 @@ def compute_topological_variables(dat,
         # Merge landscapes with [baseline only]
         X = dat.loc[:, ~v].merge(ls, **mrg)
     return(X)
+
+
+# Functions needed to genereate growth curves
+
+class GenerateGrowthCurves(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        return None
+    def fit(self, X=None, y=None):
+        return self
+    def transform(self, X=None):
+        return(fit_growth_curves(X))
+
 

@@ -11,4 +11,10 @@ dependencies:
   - numpy=1.23.5
   - pandas=1.5.2
   - statsmodels=0.13.5
+  - bokeh=2.4.2
   - mpi4py=3.1.4
+  - jupyter-server-proxy
+  - conda-forge::glmnet
+  - conda-forge::dask-mpi
+  - conda-forge::dask-jobqueue
+

@@ -2,8 +2,6 @@
 # Author: Ewan Carr
 # Started: 2021-06-25
 
-module load py-scikit-learn
-
 import re
 from pathlib import Path
 from datetime import datetime
@@ -248,8 +246,6 @@ We're interested in the following options:
 
     1 and 2 are handled with the '
 '''
-
-# CONTINUE HERE (2023-02-02) Write a new version than generates GC with CV:
 
 from sklearn.base import BaseEstimator, TransformerMixin
 
