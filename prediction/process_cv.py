@@ -46,6 +46,7 @@ best.pivot_table(index=['sample', 'drug', 'random'],
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
 cv_results = load('saved/2023_02_22_055807_cv_results.joblib')
+cv_results = load('saved/2023_03_22_203443_cv_results.joblib')
 
 
 def make_cell(arr, reps=50):
@@ -62,7 +63,7 @@ for k, v in cv_results.items():
     row['random'] = k[1][2]
     row['max_week'] = k[2]
     for met in [m for m  in list(v['cv']) if m.startswith('test_')]:
-        row[met] = make_cell(v['cv'][met])
+        row[met] = make_cell(v['cv'][met], reps = 10)
     tab.append(row)
 
 res = pd.DataFrame(tab).sort_values(['model', 'sample', 'max_week'])

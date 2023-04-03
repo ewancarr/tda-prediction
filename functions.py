@@ -3,11 +3,23 @@ import numpy as np
 from sklearn.impute import KNNImputer
 from sklearn.manifold import MDS
 from sklearn.decomposition import PCA
+from sklearn.pipeline import Pipeline
 import gudhi as gd
+from sklearn.feature_selection import VarianceThreshold
+from sklearn.preprocessing import FunctionTransformer, StandardScaler
+from sklearn.model_selection import (GridSearchCV,
+                                     KFold,
+                                     RepeatedKFold,
+                                     RepeatedStratifiedKFold, 
+                                     cross_validate)
 from sklearn.metrics import (make_scorer, confusion_matrix,
                              recall_score, brier_score_loss,
                              accuracy_score,
                              balanced_accuracy_score)
+from glmnet import LogitNet
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import warnings
 from gudhi.representations import DiagramSelector, Landscape
 from sklearn.base import BaseEstimator, TransformerMixin
 
@@ -218,6 +230,45 @@ def compute_topological_variables(dat,
 
 # Functions needed to genereate growth curves
 
+def fit_growth_curves(X):
+    import re
+    import numpy as np
+    # Identify repeated measures
+    pattern = re.compile("^rep__")
+    repeated_measures = [bool(pattern.match(i)) for i in list(X)]
+
+    # Separate baseline vs. repeated measures columns
+    other = X.loc[:, [not i for i in repeated_measures]]
+    X = X.loc[:, repeated_measures]
+
+    # Select repeated measures, reshape to LONG format
+    X = X.melt(ignore_index=False)
+    X['week'] = X['variable'].str[-1:].astype('int')
+    X.reset_index(inplace=True)
+
+    # For each outcome, fit a growth curve
+    outcomes = set([re.search(r"^rep__(.*)__w.*", f).group(1) 
+                for f in X['variable'].unique()])
+
+    random_effects = []
+    for o in outcomes:
+        df = X[X.variable.str.contains(o)].dropna()
+        mdf = smf.mixedlm('value ~ week + np.power(week, 2)',
+                          df,
+                          groups=df['subjectid'], 
+                          re_formula='~ week + np.power(week, 2)')
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            mdf = mdf.fit()
+        re = pd.DataFrame(mdf.random_effects).T
+        re.columns = [o + i for i in ['_int', '_t', '_t2']]
+        random_effects.append(re)
+    # Append all random effects; merge with 'baseline' variables
+    return(other.merge(pd.concat(random_effects, axis=1),
+                       left_index=True,
+                       right_index=True))
+
+
 class GenerateGrowthCurves(BaseEstimator, TransformerMixin):
     def __init__(self):
         return None
@@ -226,4 +277,55 @@ class GenerateGrowthCurves(BaseEstimator, TransformerMixin):
     def transform(self, X=None):
         return(fit_growth_curves(X))
 
+# Functions needed to evaluate models
+
+def evaluate_model(X, y,
+                   generate_curves=False,
+                   folds_outer=10,
+                   folds_inner=10,
+                   cores=20,
+                   reps=50,
+                   return_estimator=False):
+    features = X.columns
+    # TODO: find cleaner way of having an optional step in the pipeline
+    if generate_curves:
+        pipe = Pipeline(steps=[
+            ('impute', FunctionTransformer(knn)),
+            ('growthcurves', GenerateGrowthCurves()),
+            ('zerovar', VarianceThreshold()),
+            ('scale', StandardScaler()),
+            ('estimator', LogitNet(alpha=0.5,
+                                   cut_point=0,
+                                   n_splits=folds_inner,
+                                   random_state=42))])
+    else:
+        pipe = Pipeline(steps=[
+            ('impute', FunctionTransformer(knn)),
+            ('zerovar', VarianceThreshold()),
+            ('scale', StandardScaler()),
+            ('estimator', LogitNet(alpha=0.5,
+                                   cut_point=0,
+                                   n_splits=folds_inner,
+                                   random_state=42))])
+    # NOTE: using stratified k-fold here
+    rkf = RepeatedStratifiedKFold(n_splits=folds_outer,
+                                  n_repeats=reps,
+                                  random_state=42)
+    fit = cross_validate(pipe,
+                         X=X,
+                         y=y,
+                         cv=rkf,
+                         scoring=scorers,
+                         n_jobs=cores,
+                         return_estimator=return_estimator)
+    # Refit, once, to get feature importance
+    single = pipe.fit(X, y)
+    return({'cv': fit, 'single': single, 'features': features})
+
+def prepare_repeated(d, baseline, mw):
+    # Select repeated measures and merge with baseline variables
+    d = d[d['week'] <= mw].copy()
+    d['col'] = d['variable'] + '_w' + d['week'].astype('str')
+    r = d[['col', 'value']].pivot(columns='col', values='value')
+    return(baseline.merge(r, left_index=True, right_index=True, how='inner'))
 
