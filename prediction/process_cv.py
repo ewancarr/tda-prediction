@@ -8,8 +8,11 @@ from joblib import load
 from functions import *
 
 def cv_metric(fit, what='test_score', reps=100):
-    fold_means = [np.nanmean(i) 
-            for i in np.array_split(fit[what], reps)]
+    if reps == 0:
+        fold_means = [np.nanmean(i) 
+                for i in np.array_split(fit[what], reps)]
+    else:
+        fold_means = fit[what]
     return(np.percentile(fold_means, [50, 2, 98]))
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -45,13 +48,15 @@ best.pivot_table(index=['sample', 'drug', 'random'],
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-cv_results = load('saved/2023_02_22_055807_cv_results.joblib')
-cv_results = load('saved/2023_03_22_203443_cv_results.joblib')
+cv_results = load('saved/2023_05_22_150319_cv_results.joblib')
 
 
 def make_cell(arr, reps=50):
-    outer_folds = [np.nanmean(i) for i in np.array_split(arr, reps)]
-    est = ['{:.3f}'.format(i) for i in np.percentile(outer_folds, [50, 2, 98])]
+    if reps == 0:
+        outer_folds = arr
+    else:
+        outer_folds = [np.nanmean(i) for i in np.array_split(arr, reps)]
+    est = ['{:.3f}'.format(i) for i in np.percentile(outer_folds, [50, 2.5, 97.5])]
     return(f'{est[0]} [{est[1]}, {est[2]}]')
 
 tab = []
@@ -63,14 +68,13 @@ for k, v in cv_results.items():
     row['random'] = k[1][2]
     row['max_week'] = k[2]
     for met in [m for m  in list(v['cv']) if m.startswith('test_')]:
-        row[met] = make_cell(v['cv'][met], reps = 10)
+        row[met] = make_cell(v['cv'][met], reps = 100)
     tab.append(row)
 
 res = pd.DataFrame(tab).sort_values(['model', 'sample', 'max_week'])
-res.to_excel('new_results.xlsx')
 
 res[['model', 'sample', 'drug', 'max_week', 'test_auc']]. \
         pivot(index=['model', 'max_week'],
               columns=['sample', 'drug'],
-              values='test_auc').round(3).to_excel('pivot.xlsx')
+              values='test_auc').round(3).to_excel('tables/pivot.xlsx')
 

@@ -2,14 +2,15 @@ import pandas as pd
 import numpy as np
 from sklearn.impute import KNNImputer
 from sklearn.manifold import MDS
-from sklearn.decomposition import PCA
+# from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 import gudhi as gd
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.preprocessing import FunctionTransformer, StandardScaler
-from sklearn.model_selection import (GridSearchCV,
-                                     KFold,
-                                     RepeatedKFold,
+from sklearn.model_selection import (# GridSearchCV,
+                                     # KFold,
+                                     # RepeatedKFold,
+                                     StratifiedKFold, 
                                      RepeatedStratifiedKFold, 
                                      cross_validate)
 from sklearn.metrics import (make_scorer, confusion_matrix,
@@ -17,7 +18,7 @@ from sklearn.metrics import (make_scorer, confusion_matrix,
                              accuracy_score,
                              balanced_accuracy_score)
 from glmnet import LogitNet
-import statsmodels.api as sm
+# import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import warnings
 from gudhi.representations import DiagramSelector, Landscape
@@ -287,6 +288,7 @@ def evaluate_model(X, y,
                    reps=50,
                    return_estimator=False):
     features = X.columns
+    print('Repetitions: ', str(reps))
     # TODO: find cleaner way of having an optional step in the pipeline
     if generate_curves:
         pipe = Pipeline(steps=[
@@ -308,9 +310,13 @@ def evaluate_model(X, y,
                                    n_splits=folds_inner,
                                    random_state=42))])
     # NOTE: using stratified k-fold here
-    rkf = RepeatedStratifiedKFold(n_splits=folds_outer,
-                                  n_repeats=reps,
-                                  random_state=42)
+    if reps == 0:
+        rkf = StratifiedKFold(n_splits=folds_outer,
+                              random_state=42)
+    else:
+        rkf = RepeatedStratifiedKFold(n_splits=folds_outer,
+                                      n_repeats=reps,
+                                      random_state=42)
     fit = cross_validate(pipe,
                          X=X,
                          y=y,

@@ -1,8 +1,9 @@
-# Title: Tune landscape parameters using scikit-learn
+# Title: Prediction models using repeated measures in GENDEP
 # Author: Ewan Carr
 # Started: 2021-06-25
+# Updated: 2023-04-03
 
-import re
+# import re
 from pathlib import Path
 from datetime import datetime
 from joblib import load, dump
@@ -10,40 +11,45 @@ import pandas as pd
 import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.feature_selection import VarianceThreshold
-from sklearn.preprocessing import FunctionTransformer, StandardScaler
-from sklearn.impute import KNNImputer
-from sklearn.manifold import MDS
-from sklearn.model_selection import (GridSearchCV,
-                                     KFold,
-                                     RepeatedKFold,
-                                     RepeatedStratifiedKFold, 
-                                     cross_validate)
+from sklearn.preprocessing import FunctionTransformer # StandardScaler
+# from sklearn.impute import KNNImputer
+# from sklearn.manifold import MDS
+from sklearn.model_selection import (GridSearchCV)
+                                     # KFold,
+                                     # RepeatedKFold,
+                                     # StratifiedKFold,
+                                     # RepeatedStratifiedKFold, 
+                                     # cross_validate)
 from glmnet import LogitNet
-import gudhi as gd
-from gudhi.representations import DiagramSelector, Landscape
+# import gudhi as gd
+# from gudhi.representations import DiagramSelector, Landscape
 from scipy.stats import ttest_ind
-from sklearn.metrics import (make_scorer,
-                             confusion_matrix,
-                             recall_score,
-                             brier_score_loss,
-                             accuracy_score,
-                             balanced_accuracy_score)
-import statsmodels.api as sm
-import statsmodels.formula.api as smf
-import warnings
-from sklearn.base import BaseEstimator, TransformerMixin
+# from sklearn.metrics import (make_scorer,
+#                              confusion_matrix,
+#                              recall_score,
+#                              brier_score_loss,
+#                              accuracy_score,
+#                              balanced_accuracy_score)
+# import statsmodels.api as sm
+# import statsmodels.formula.api as smf
+# import warnings
+# from sklearn.base import BaseEstimator, TransformerMixin
 from functions import *
 
+config = {}
 # Re-run grid search? Almost never.
-refit_grid_search = False
+config['refit_grid_search'] = False
 # Re-run internal validation? Almost always.
-refit_iv = True
-select_subsample = False
-folds_inner = 10
-folds_outer = 10
-n_reps = 10
-cores = 20
-grid_search = 'saved/2021_08_09/2021_08_08_153539_grid_search.joblib'
+config['refit_iv'] = False
+# Re-run PRS models? Almost always.
+config['refit_prs'] = True
+
+config['select_subsample'] = False
+config['folds_inner'] = 10
+config['folds_outer'] = 10
+config['n_reps'] = 100
+config['cores'] = 16
+config['grid_search'] = 'saved/2021_08_09/2021_08_08_153539_grid_search.joblib'
 
 def tstamp(suffix):
     return(datetime.today().strftime('%Y_%m_%d_%H%M%S') + '_' + suffix + '.joblib')
@@ -59,6 +65,14 @@ outcomes = load(inp / 'outcomes.joblib')
 baseline = load(inp / 'baseline.joblib')
 replong, repwide = load(inp / 'repmea.joblib')
 
+# # Check missingness across weeks
+# check = replong
+# check['value'] = check['value'].isna()
+# byweek = check.set_index('week', append=True). \
+#     groupby(['subjectid', 'week'])['value'].mean(). \
+#     unstack()
+# byweek['included'] = (byweek[0] < 0.2) & (byweek[1] < 0.2) & (byweek[2] < 0.2)
+
 # Add prefix to repeated measures to make it easier to identify later
 with_prefix = ['rep_' + i for i in repwide.columns]
 repwide.columns = with_prefix
@@ -68,6 +82,7 @@ comb = baseline.merge(repwide, left_index=True, right_index=True, how='inner')
 comb = comb.loc[set(outcomes.index).intersection(comb.index), :]
 before = comb.copy()
 n1 = np.shape(comb)[0]
+
 
 # Remove people with less than 80% complete data among repeated measures
 # at weeks 0, 1 and 2. (Week 0 = baseline).
@@ -105,7 +120,7 @@ baseline['escit'] = baseline['drug'] == 'escitalopram'
 baseline.drop(labels=['drug', 'random'], axis=1, inplace=True)
 
 # Select subsample for testing purposes
-if select_subsample:
+if config['select_subsample']:
     for k, v in samp.items():
         samp[k] = pd.Series(v).sample(frac=0.3)
 
@@ -177,9 +192,10 @@ for land in [3, 5, 10, 12, 15]:
 #  │                                                         │
 #  └─────────────────────────────────────────────────────────┘
 
-# NOTE: This is using 10-fold CV without repetition.
+# NOTE: using 10-fold CV without repetition.
+# NOTE: takes a long time; typically we don't need to re-run this.
 
-if refit_grid_search:
+if config['refit_grid_search']:
     cv_inner = {}
     for k, v in samp.items():
         # For each sample [A, B, C]
@@ -218,16 +234,21 @@ else:
 '''
 We're interested in the following options:
 
-    1. Repeated measures
-    2. Repeated measures + landscapes
-    3. Growth curves
-    4. Growth curves + landscapes
+    1. Baseline only
+    2. Repeated measures
+    3. Repeated measures + landscapes
+    4. Growth curves
+    5. Growth curves + landscapes
 '''
-
 
 mrg = {'left_index': True, 'right_index': True, 'how': 'inner'}
 
-if refit_iv:
+# Option to decide whether to use the latest repeated measure only (i.e., week
+# 4 only, for the '4 week' models), or all preceding measures.
+use_last_week_only = True
+
+
+if config['refit_iv']:
     cv_results = {}
     for k, v in samp.items():
         for max_week in [2, 4, 6]:
@@ -248,19 +269,26 @@ if refit_iv:
             params = cv_inner[(k, False, max_week)].best_params_['topo__kw_args']
             params['keep_rm'] = False
             params['max_week'] = max_week
-
             ls = compute_topological_variables(bl.merge(rm, **mrg).copy(), **params)
             ls = ls.loc[:, ls.columns.str.startswith('X')]
             ls.index.rename('subjectid', inplace=True)
+
+            # Decide: use all repeated measures or just latest assessment?
+            if use_last_week_only:
+                first_and_last = rm.columns.str.endswith('__w0') | rm.columns.str.endswith(f'__w{max_week}')
+                rm_features = rm.loc[:, first_and_last]
+            else:
+                rm_features = rm.copy()
 
             # Prepare outcome
             y = hdremit.loc[v].copy()
 
             # Set CV parameters
-            cv_param = {'reps': n_reps,
-                        'cores': cores,
-                        'folds_inner': folds_inner,
-                        'folds_outer': folds_outer}
+            cv_param = {'reps': config['n_reps'],
+                        'cores': config['cores'],
+                        'folds_inner': config['folds_inner'],
+                        'folds_outer': config['folds_outer']
+                        }
 
             # NOTE: We include baseline features in all models.
 
@@ -272,15 +300,16 @@ if refit_iv:
 
             # Option 2) RM only ———————————————————————————————————————————————
             print(k, max_week, '2. RM only')
-            X = bl.merge(rm, **mrg)
+            X = bl.merge(rm_features, **mrg)
             cv_results[("2. RM only",
                         k, max_week)] = evaluate_model(X, y, **cv_param)
 
             # Option 3) RM + landscapes ———————————————————————————————————————
             print(k, max_week, '3. RM + LS')
-            X = bl.merge(rm, **mrg).merge(ls, **mrg)
-            cv_results[("3. RM + LS", k, max_week)] = evaluate_model(X, y, 
-                                                                     **cv_param)
+            X = bl.merge(rm_features, **mrg).merge(ls, **mrg)
+            cv_results[("3. RM + LS",
+                        k, max_week)] = evaluate_model(X, y, 
+                                                       **cv_param)
 
             # Option 3: GC only ———————————————————————————————————————————————
             print(k, max_week, '4. GC only')
@@ -291,7 +320,7 @@ if refit_iv:
                                                        **cv_param,
                                                        generate_curves=True)
 
-            # Option 5: GC + landscapes ---------------------------------------
+            # Option 5: GC + landscapes ———————————————————————————————————————
             print(k, max_week, '5. GC + LS')
             X = bl.merge(rm, **mrg).merge(ls, **mrg)
             X = bl.merge(rm, **mrg).merge(ls, **mrg)
