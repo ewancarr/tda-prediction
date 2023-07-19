@@ -74,6 +74,12 @@ def calc_ppv(y_true, y_prob, threshold=0.5):
     return(ppv)
 
 
+def sensitivity(tp, fn):
+    return(tp / (tp + fn))
+
+def specificity(tn, fp):
+    return(tn / (tn + fp))
+
 def sens(y_true, y_prob, threshold):
     y_pred = y_prob > threshold
     return(recall_score(y_true, y_pred))
@@ -82,7 +88,6 @@ def sens(y_true, y_prob, threshold):
 def spec(y_true, y_prob, threshold):
     y_pred = y_prob > threshold
     return(recall_score(y_true, y_pred, pos_label=0))
-
 
 scorers = {'auc': 'roc_auc',
            'sens': make_scorer(recall_score),
@@ -312,6 +317,7 @@ def evaluate_model(X, y,
     # NOTE: using stratified k-fold here
     if reps == 0:
         rkf = StratifiedKFold(n_splits=folds_outer,
+                              shuffle=True,
                               random_state=42)
     else:
         rkf = RepeatedStratifiedKFold(n_splits=folds_outer,
@@ -328,10 +334,61 @@ def evaluate_model(X, y,
     single = pipe.fit(X, y)
     return({'cv': fit, 'single': single, 'features': features})
 
+
+# Wrapper function used to test the PRS models (no repetitions)
+def evaluate_prs(X, y, prs, cores=16, generate_curves=False):
+    X = X.merge(prs, how='inner', left_index=True, right_index=True)
+    y = y.loc[X.index]
+    # Fit without PRS
+    wo = evaluate_model(X.drop('madrs_prs', axis=1),
+                        y,
+                        reps=0,
+                        cores=cores,
+                        generate_curves=generate_curves)
+    # Fit with PRS
+    wi = evaluate_model(X, y, reps=0, cores=cores)
+    return({'wo': wo, 'wi': wi})
+
 def prepare_repeated(d, baseline, mw):
     # Select repeated measures and merge with baseline variables
     d = d[d['week'] <= mw].copy()
     d['col'] = d['variable'] + '_w' + d['week'].astype('str')
     r = d[['col', 'value']].pivot(columns='col', values='value')
     return(baseline.merge(r, left_index=True, right_index=True, how='inner'))
+
+def check_variables():
+    url = 'https://docs.google.com/spreadsheets/d/1FApFC2HQJXNFdjYSQ7CLx7uss_eCsTEubsIMQTm9R_o/export?format=csv'
+    lookup = pd.read_csv(url)
+
+    # Check baseline variables ------------------------------------------------
+    in_table = list(lookup['Variable*'].dropna())
+    in_baseline = list(baseline)
+    print('Variables in baseline dataset but not in Supplementary Table 1:')
+    for v in list(baseline):
+        if v not in in_table:
+            print(v)
+
+    print('Variables in Supplementary Table 1 that are not in baseline:')
+    for v in in_table:
+        if v not in list(baseline):
+            print(v)
+
+    # Check repeated measures variables ---------------------------------------
+    in_repeated = replong['variable'].unique()
+    table_repeated = lookup.dropna(subset=['Measured repeatedly'],
+                                      axis='rows')[['Variable*',
+                                                    'Measured repeatedly']]
+    table_repeated = table_repeated[table_repeated['Measured repeatedly'] == 'Yes']['Variable*'].values
+
+    print('Repeated measures variables that are not in Supplementary Table 1:')
+    for v in list(in_repeated):
+        if v not in table_repeated:
+            print(v)
+
+    print('Variables in Supplementary Table 1 that are not in the repeated measures dataset:')
+    for v in table_repeated:
+        if v not in list(in_repeated):
+            print(v)
+
+    len(table_repeated)
 

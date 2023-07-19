@@ -350,17 +350,32 @@ for k, v in persistence.items():
 # NOTE: the sample size differs slightly depending on the number of weeks
 #       selected.
 
+
+# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+# ┃                                                                           ┃
+# ┃                           Import PRS variables                            ┃
+# ┃                                                                           ┃
+# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+prs = pd.read_csv('data/GENDEP/raw/from_jenny/GENDEPprs_X01X1.csv')
+id_vars = gendep_core[['subjectid', 'bloodsampleid']]
+prs = prs.rename({'FID': 'bloodsampleid',
+                  'X0.1': 'madrs_prs'}, axis=1)[['bloodsampleid', 'madrs_prs']]
+prs = prs.merge(id_vars, how='inner', on='bloodsampleid')
+prs = prs.set_index('subjectid')['madrs_prs']
+
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
 # ┃                                  Export                                   ┃
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-inp = Path('analysis/prediction/GENDEP/tda_prediction/inputs')
+inp = Path('analysis/prediction/GENDEP/tda_prediction/data')
 dump(persistence, inp / 'persistence.joblib')
 dump(outcomes, inp / 'outcomes.joblib')
 dump(baseline, inp / 'baseline.joblib')
 dump([replong, repwide], inp / 'repmea.joblib')
+dump(prs, inp / 'prs.joblib')
 
 # Export to Feather -----------------------------------------------------------
 repwide.reset_index().to_feather(inp / 'feather' / 'repwide.feather')

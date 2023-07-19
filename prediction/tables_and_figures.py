@@ -1,19 +1,19 @@
 # Title:        Prepare tables and figures for TDA prediction paper
 # Author:       Ewan Carr
 # Started:      2021-06-22
-# Updated:      2023-06-12
+# Updated:      2023-07-19
 
 import numpy as np
 import pandas as pd
 from pathlib import Path
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 from joblib import load
-import seaborn as sns
+from functions import *
 font = {'fontname': 'Arial'}
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['font.sans-serif'] = ['Arial']
 
+# Load datasets
 inp = Path('data')
 outcomes = load(inp / 'outcomes.joblib')
 baseline = load(inp / 'baseline.joblib')
@@ -29,7 +29,7 @@ def cv_metric(arr, reps=100, squash=False):
         return((p50, p2, p98))
 
 # Load latest estimates from grid search
-cv = load('saved/final/2023_05_22_150319_cv_results.joblib')
+prs = load('saved/final/2023_07_18_220959_prs_results.joblib')
 
 for k in samp.keys():
     print(k)
@@ -43,44 +43,7 @@ for k in samp.keys():
 # This code checks that each variable used in our analysis is listed in 
 # Supplementary Table 1, on Google Sheets.
 
-def check_variables():
-    url = 'https://docs.google.com/spreadsheets/d/1FApFC2HQJXNFdjYSQ7CLx7uss_eCsTEubsIMQTm9R_o/export?format=csv'
-    lookup = pd.read_csv(url)
-
-    # Check baseline variables ------------------------------------------------
-    in_table = list(lookup['Variable*'].dropna())
-    in_baseline = list(baseline)
-    print('Variables in baseline dataset but not in Supplementary Table 1:')
-    for v in list(baseline):
-        if v not in in_table:
-            print(v)
-
-    print('Variables in Supplementary Table 1 that are not in baseline:')
-    for v in in_table:
-        if v not in list(baseline):
-            print(v)
-
-    # Check repeated measures variables ---------------------------------------
-    in_repeated = replong['variable'].unique()
-    table_repeated = lookup.dropna(subset=['Measured repeatedly'],
-                                      axis='rows')[['Variable*',
-                                                    'Measured repeatedly']]
-    table_repeated = table_repeated[table_repeated['Measured repeatedly'] == 'Yes']['Variable*'].values
-
-    print('Repeated measures variables that are not in Supplementary Table 1:')
-    for v in list(in_repeated):
-        if v not in table_repeated:
-            print(v)
-
-    print('Variables in Supplementary Table 1 that are not in the repeated measures dataset:')
-    for v in table_repeated:
-        if v not in list(in_repeated):
-            print(v)
-
-    len(table_repeated)
-
-if False:
-    check_variables()
+check_variables()
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -155,28 +118,18 @@ table1.columns = [f'A (n={s_a})',
 table1 = table1.iloc[:, [3, 4, 0, 1, 2]]
 table1.to_excel('tables/table1.xlsx')
 
-
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-# ┃                                                                           ┃
 # ┃                     Check: data completeness by drug                      ┃
-# ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
 for k, v in samp.items():
     print(k, repwide.loc[v].isna().sum(axis=1).median())
 
-
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-# ┃                                                                           ┃
-# ┃            Calculate performance metrics from internal validation         ┃
-# ┃                                                                           ┃
+# ┃                 Extract results from internal validation                  ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-def sensitivity(tp, fn):
-    return(tp / (tp + fn))
-
-def specificity(tn, fp):
-    return(tn / (tn + fp))
+cv = load('saved/final/2023_05_22_150319_cv_results.joblib')
 
 n_reps=100
 for k1, v1 in cv.items():
@@ -197,26 +150,19 @@ for k1, v1 in cv.items():
                                                reps=n_reps, squash=False)
     v1['metrics'] = est
 
-
-# Export required metrics as a CSV
 est = {}
 for k, v in cv.items():
     est[k] = v['metrics']
 
 pd.DataFrame(est).to_csv('metrics.csv')
 
-# Calculate response on MADRS by week 2 ---------------------------------------
+# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+# ┃                           Extract PRS estimates                           ┃
+# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-# (This is based on email from Raquel dated 2022-03-29).
-
-ss = replong[(replong.variable == 'madrs') & (replong.week < 3)]
-ss = pd.pivot(ss, columns='week', values='value')
-ss['resp_w2'] = (ss[0] - ss[2]) / ss[0]
-
-# By samples used in the paper
-for (letter, drug, rand), ids in samp.items():
-    print(drug, len(ids), ss.loc[ids]['resp_w2'].median().round(2))
-
-# By drug/randomisation
-comb = baseline[['drug', 'random']].merge(ss, left_index=True, right_index=True)
-comb.groupby(['drug', 'random']).agg(['mean', 'count'])
+prs_tab = {}
+for k, v in prs.items():
+    prs_tab[k] = {'without_prs': np.nanmean(v['wo']['cv']['test_auc']),
+                  'with_prs': np.nanmean(v['wi']['cv']['test_auc'])}
+prs_tab = pd.DataFrame(prs_tab).T
+prs_tab.to_csv('prs.csv')
