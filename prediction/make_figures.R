@@ -128,3 +128,20 @@ clean_results |>
   geom_pointrange() +
   facet_wrap(~ sample) +
   theme_minimal()
+
+# Table: PRS results ----------------------------------------------------------
+
+prs <- read_csv("prs.csv") |>
+  set_names(c("key", "sample", "max_week", "no_prs", "with_prs")) |>
+  mutate(sample = case_when(str_detect(sample, "escitalopram") ~ "Escitalopram",
+                            str_detect(sample, "nortriptyline") ~ "Nortriptyline",
+                            str_detect(sample, "both") ~ "Both"),
+         across(c(no_prs, with_prs), \(x) sprintf("%.3f", x))) 
+
+prs |>
+  pivot_longer(no_prs:with_prs,
+               names_to = "model",
+               values_to = "auc") |>
+  pivot_wider(names_from = c(sample, model),
+              values_from = auc) |>
+  write_csv(here("tables", "prs.csv"))

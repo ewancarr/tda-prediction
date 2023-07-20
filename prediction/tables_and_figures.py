@@ -166,3 +166,10 @@ for k, v in prs.items():
                   'with_prs': np.nanmean(v['wi']['cv']['test_auc'])}
 prs_tab = pd.DataFrame(prs_tab).T
 prs_tab.to_csv('prs.csv')
+
+# Check: which features were retained
+
+f = prs[('5. GC + LS', ('C', 'both', 'anyrandom'), 6)]
+f['wi']['features']
+f['wo']['features']
+
