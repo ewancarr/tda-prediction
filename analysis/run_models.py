@@ -11,29 +11,10 @@ import pandas as pd
 import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.feature_selection import VarianceThreshold
-from sklearn.preprocessing import FunctionTransformer # StandardScaler
-# from sklearn.impute import KNNImputer
-# from sklearn.manifold import MDS
-from sklearn.model_selection import (GridSearchCV)
-                                     # KFold,
-                                     # RepeatedKFold,
-                                     # StratifiedKFold,
-                                     # RepeatedStratifiedKFold, 
-                                     # cross_validate)
+from sklearn.preprocessing import FunctionTransformer 
+from sklearn.model_selection import GridSearchCV
 from glmnet import LogitNet
-# import gudhi as gd
-# from gudhi.representations import DiagramSelector, Landscape
 from scipy.stats import ttest_ind
-# from sklearn.metrics import (make_scorer,
-#                              confusion_matrix,
-#                              recall_score,
-#                              brier_score_loss,
-#                              accuracy_score,
-#                              balanced_accuracy_score)
-# import statsmodels.api as sm
-# import statsmodels.formula.api as smf
-# import warnings
-# from sklearn.base import BaseEstimator, TransformerMixin
 from functions import *
 
 config = {}
