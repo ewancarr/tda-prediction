@@ -357,10 +357,15 @@ for k, v in persistence.items():
 # ┃                                                                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-prs = pd.read_csv('data/GENDEP/raw/from_jenny/GENDEPprs_X01X1.csv')
+prs = pd.read_table('data/GENDEP/raw/from_jenny/MADRS_resp_2.best',
+                    sep='\\s+')[['IID', 'PRS']]
+
+prs.rename({'IID': 'bloodsampleid',
+            'PRS': 'madrs_prs'},
+           axis=1, inplace=True) 
+
 id_vars = gendep_core[['subjectid', 'bloodsampleid']]
-prs = prs.rename({'FID': 'bloodsampleid',
-                  'X0.1': 'madrs_prs'}, axis=1)[['bloodsampleid', 'madrs_prs']]
+
 prs = prs.merge(id_vars, how='inner', on='bloodsampleid')
 prs = prs.set_index('subjectid')['madrs_prs']
 
