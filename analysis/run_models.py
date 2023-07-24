@@ -20,7 +20,7 @@ from functions import *
 config = {}
 # Re-run grid search? Almost never.
 config['refit_grid_search'] = False
-config['grid_search'] = 'saved/2021_08_09/2021_08_08_153539_grid_search.joblib'
+config['grid_search'] = 'saved/final/2021_08_08_153539_grid_search.joblib'
 # Re-run internal validation? Almost always.
 config['refit_iv'] = False
 config['iv_path'] = 'saved/final/2023_05_22_150319_cv_results.joblib'
