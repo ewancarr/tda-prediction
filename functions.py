@@ -7,10 +7,7 @@ from sklearn.pipeline import Pipeline
 import gudhi as gd
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.preprocessing import FunctionTransformer, StandardScaler
-from sklearn.model_selection import (# GridSearchCV,
-                                     # KFold,
-                                     # RepeatedKFold,
-                                     StratifiedKFold, 
+from sklearn.model_selection import (StratifiedKFold, 
                                      RepeatedStratifiedKFold, 
                                      cross_validate)
 from sklearn.metrics import (make_scorer, confusion_matrix,
@@ -336,13 +333,13 @@ def evaluate_model(X, y,
 
 
 # Wrapper function used to test the PRS models (no repetitions)
-def evaluate_prs(X, y, prs, cores=16, generate_curves=False):
+def evaluate_prs(X, y, prs, cores=16, generate_curves=False, n_reps=10):
     X = X.merge(prs, how='inner', left_index=True, right_index=True)
     y = y.loc[X.index]
     # Fit without PRS
     wo = evaluate_model(X.drop('madrs_prs', axis=1),
                         y,
-                        reps=0,
+                        reps=n_reps,
                         cores=cores,
                         generate_curves=generate_curves)
     # Fit with PRS
@@ -356,7 +353,7 @@ def prepare_repeated(d, baseline, mw):
     r = d[['col', 'value']].pivot(columns='col', values='value')
     return(baseline.merge(r, left_index=True, right_index=True, how='inner'))
 
-def check_variables():
+def check_variables(baseline, replong):
     url = 'https://docs.google.com/spreadsheets/d/1FApFC2HQJXNFdjYSQ7CLx7uss_eCsTEubsIMQTm9R_o/export?format=csv'
     lookup = pd.read_csv(url)
 

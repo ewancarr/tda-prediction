@@ -28,9 +28,6 @@ def cv_metric(arr, reps=100, squash=False):
     else:
         return((p50, p2, p98))
 
-# Load latest estimates from grid search
-prs = load('saved/final/2023_07_18_220959_prs_results.joblib')
-
 for k in samp.keys():
     print(k)
 
@@ -160,12 +157,16 @@ pd.DataFrame(est).to_csv('metrics.csv')
 # ┃                           Extract PRS estimates                           ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
+# Load latest estimates from grid search
+prs = load('saved/final/2023_07_20_170319_prs_results.joblib')
+
+
 prs_tab = {}
 for k, v in prs.items():
     prs_tab[k] = {'without_prs': np.nanmean(v['wo']['cv']['test_auc']),
                   'with_prs': np.nanmean(v['wi']['cv']['test_auc'])}
 prs_tab = pd.DataFrame(prs_tab).T
-prs_tab.to_csv('prs.csv')
+prs_tab.to_csv('prs.cs2023-07-21v')
 
 # Check: which features were retained
 

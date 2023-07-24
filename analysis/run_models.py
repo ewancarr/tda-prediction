@@ -49,14 +49,6 @@ baseline = load(inp / 'baseline.joblib')
 replong, repwide = load(inp / 'repmea.joblib')
 prs = load(inp / 'prs.joblib')
 
-# # Check missingness across weeks
-# check = replong
-# check['value'] = check['value'].isna()
-# byweek = check.set_index('week', append=True). \
-#     groupby(['subjectid', 'week'])['value'].mean(). \
-#     unstack()
-# byweek['included'] = (byweek[0] < 0.2) & (byweek[1] < 0.2) & (byweek[2] < 0.2)
-
 # Add prefix to repeated measures to make it easier to identify later
 with_prefix = ['rep_' + i for i in repwide.columns]
 repwide.columns = with_prefix
