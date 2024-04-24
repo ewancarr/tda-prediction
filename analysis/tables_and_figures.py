@@ -21,7 +21,10 @@ replong, repwide = load(inp / 'repmea.joblib')
 samp = load('samp.joblib')
 
 def cv_metric(arr, reps=100, squash=False):
-    fold_means = [np.nanmean(i) for i in np.array_split(arr, reps)]
+    if reps == 0:
+        fold_means = arr
+    else:
+        fold_means = [np.nanmean(i) for i in np.array_split(arr, reps)]
     p50, p2, p98 = np.percentile(fold_means, [50, 2.5, 97.5])
     if squash:
         return(f'{p50:.3f} [{p2:.3f}, {p98:.3f}]')
@@ -40,7 +43,7 @@ for k in samp.keys():
 # This code checks that each variable used in our analysis is listed in 
 # Supplementary Table 1, on Google Sheets.
 
-check_variables()
+check_variables(baseline, replong)
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -126,9 +129,9 @@ for k, v in samp.items():
 # ┃                 Extract results from internal validation                  ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-cv = load('saved/final/2023_05_22_150319_cv_results.joblib')
+cv = load('saved/final/2023_08_23_194541_cv_results.joblib')
 
-n_reps=100
+n_reps = 20
 for k1, v1 in cv.items():
     est = {}
     for k2, v2 in v1['cv'].items():
@@ -151,26 +154,4 @@ est = {}
 for k, v in cv.items():
     est[k] = v['metrics']
 
-pd.DataFrame(est).to_csv('metrics.csv')
-
-# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-# ┃                           Extract PRS estimates                           ┃
-# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-
-# Load latest estimates from grid search
-prs = load('saved/final/2023_07_20_170319_prs_results.joblib')
-
-
-prs_tab = {}
-for k, v in prs.items():
-    prs_tab[k] = {'without_prs': np.nanmean(v['wo']['cv']['test_auc']),
-                  'with_prs': np.nanmean(v['wi']['cv']['test_auc'])}
-prs_tab = pd.DataFrame(prs_tab).T
-prs_tab.to_csv('prs.cs2023-07-21v')
-
-# Check: which features were retained
-
-f = prs[('5. GC + LS', ('C', 'both', 'anyrandom'), 6)]
-f['wi']['features']
-f['wo']['features']
-
+pd.DataFrame(est).transpose().to_csv('metrics.csv')

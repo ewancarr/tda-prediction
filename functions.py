@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 from sklearn.impute import KNNImputer
 from sklearn.manifold import MDS
-# from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 import gudhi as gd
 from sklearn.feature_selection import VarianceThreshold
@@ -15,7 +14,6 @@ from sklearn.metrics import (make_scorer, confusion_matrix,
                              accuracy_score,
                              balanced_accuracy_score)
 from glmnet import LogitNet
-# import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import warnings
 from gudhi.representations import DiagramSelector, Landscape

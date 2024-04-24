@@ -145,3 +145,4 @@ dmypy.json
 *.directory
 
 prediction/re_params/
+/analysis/re_params

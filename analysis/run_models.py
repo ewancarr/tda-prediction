@@ -18,15 +18,12 @@ from scipy.stats import ttest_ind
 from functions import *
 
 config = {}
-# Re-run grid search? Almost never.
+# Re-run grid search for topological parameters? Almost never.
 config['refit_grid_search'] = False
 config['grid_search'] = 'saved/final/2021_08_08_153539_grid_search.joblib'
 # Re-run internal validation? Almost always.
-config['refit_iv'] = False
+config['refit_iv'] = True
 config['iv_path'] = 'saved/final/2023_05_22_150319_cv_results.joblib'
-# Re-run PRS models? Almost always.
-config['refit_prs'] = True
-
 config['select_subsample'] = False
 config['folds_inner'] = 10
 config['folds_outer'] = 10
@@ -58,7 +55,6 @@ comb = baseline.merge(repwide, left_index=True, right_index=True, how='inner')
 comb = comb.loc[set(outcomes.index).intersection(comb.index), :]
 before = comb.copy()
 n1 = np.shape(comb)[0]
-
 
 # Remove people with less than 80% complete data among repeated measures
 # at weeks 0, 1 and 2. (Week 0 = baseline).
@@ -131,6 +127,11 @@ tt('bmi')
 # Check prevalence by sample
 for k, v in samp.items():
     print(k, hdremit.loc[v].mean())
+
+# Export data as CSVs for debugging
+baseline.to_csv('baseline.csv')
+outcomes.to_csv('outcomes.csv')
+prs.to_csv('prs.csv')
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -222,102 +223,105 @@ mrg = {'left_index': True, 'right_index': True, 'how': 'inner'}
 # 4 only, for the '4 week' models), or all preceding measures.
 use_last_week_only = True
 
+# samp = {k: v for k, v in samp.items() if k[0] == 'B'}
+
 cv_results = {}
-prs_results = {}
-for k, v in samp.items():
-    for max_week in [2, 4, 6]:
-        # Prepare baseline features
-        bl = baseline.loc[v].copy()
-        if k[1] != 'both':
-            bl.drop(labels=['escit'], axis=1, inplace=True)
+# prs_results = {}
+if config['refit_iv']:
+    for k, v in samp.items():
+        for max_week in [2, 4, 6]:
+            for use_prs in [False, True]:
+                # Prepare baseline features
+                bl = baseline.loc[v].copy()
+                if k[1] != 'both':
+                    bl.drop(labels=['escit'], axis=1, inplace=True)
+                if use_prs:
+                    bl = bl.merge(prs,
+                                  how='left',
+                                  left_index=True,
+                                  right_index=True)
 
-        # Prepare repeated measures features
-        rm = replong.loc[v].copy()
-        rm = rm[rm['week'] <= max_week]
-        rm['col'] = rm['variable'] + '__w' + rm['week'].astype('str')
-        rm = rm[['col', 'value']].pivot(columns='col', values='value')
-        rm = rm.add_prefix('rep__')
+                # Prepare repeated measures features
+                rm = replong.loc[v].copy()
+                rm = rm[rm['week'] <= max_week]
+                rm['col'] = rm['variable'] + '__w' + rm['week'].astype('str')
+                rm = rm[['col', 'value']].pivot(columns='col', values='value')
+                rm = rm.add_prefix('rep__')
 
-        # Prepare landscape features
-        params = cv_inner[(k, False, max_week)].best_params_['topo__kw_args']
-        params['keep_rm'] = False
-        params['max_week'] = max_week
-        ls = compute_topological_variables(bl.merge(rm, **mrg).copy(), **params)
-        ls = ls.loc[:, ls.columns.str.startswith('X')]
-        ls.index.rename('subjectid', inplace=True)
+                # Prepare landscape features
+                params = cv_inner[(k, False, max_week)].best_params_['topo__kw_args']
+                params['keep_rm'] = False
+                params['max_week'] = max_week
+                ls = compute_topological_variables(bl.merge(rm, **mrg).copy(), **params)
+                ls = ls.loc[:, ls.columns.str.startswith('X')]
+                ls.index.rename('subjectid', inplace=True)
 
-        # Decide: use all repeated measures or just latest assessment?
-        if use_last_week_only:
-            first_and_last = rm.columns.str.endswith('__w0') | rm.columns.str.endswith(f'__w{max_week}')
-            rm_features = rm.loc[:, first_and_last]
-        else:
-            rm_features = rm.copy()
+                # Decide: use all repeated measures or just latest assessment?
+                if use_last_week_only:
+                    first_and_last = rm.columns.str.endswith('__w0') | rm.columns.str.endswith(f'__w{max_week}')
+                    rm_features = rm.loc[:, first_and_last]
+                else:
+                    rm_features = rm.copy()
 
-        # Prepare outcome
-        y = hdremit.loc[v].copy()
+                # Prepare outcome
+                y = hdremit.loc[v].copy()
 
-        # Set CV parameters
-        cv_param = {'reps': config['n_reps'],
-                    'cores': config['cores'],
-                    'folds_inner': config['folds_inner'],
-                    'folds_outer': config['folds_outer']
-                    }
+                # Set CV parameters
+                cv_param = {'reps': config['n_reps'],
+                            'cores': config['cores'],
+                            'folds_inner': config['folds_inner'],
+                            'folds_outer': config['folds_outer']
+                            }
 
-        # NOTE: We include baseline features in all models.
+                # NOTE: We include baseline features in all models.
 
-        # Option 1) Baseline only —————————————————————————————————————————
-        i = ('1. Baseline only', k, max_week)
-        print(i)
-        X = bl.copy()
-        if config['refit_iv']:
-            cv_results[i] = evaluate_model(X, y, **cv_param)
-        prs_results[i] = evaluate_prs(X, y, prs, cores=config['cores'])
+                # Option 1) Baseline only —————————————————————————————————————————
+                i = ('1. Baseline only', k, max_week, use_prs)
+                print(i)
+                X = bl.copy()
+                cv_results[i] = evaluate_model(X, y, **cv_param)
 
-        # Option 2) RM only ———————————————————————————————————————————————
-        i = ('2. RM only', k, max_week)
-        print(i)
-        X = bl.merge(rm_features, **mrg)
-        if config['refit_iv']:
-            cv_results[i] = evaluate_model(X, y, **cv_param)
-        prs_results[i] = evaluate_prs(X, y, prs, cores=config['cores'])
+                # Option 2) RM only ———————————————————————————————————————————————
+                i = ('2. RM only', k, max_week, use_prs)
+                print(i)
+                X = bl.merge(rm_features, **mrg)
+                cv_results[i] = evaluate_model(X, y, **cv_param)
 
-        # Option 3) RM + landscapes ———————————————————————————————————————
-        i = ('3. RM + LS', k, max_week)
-        print(i)
-        X = bl.merge(rm_features, **mrg).merge(ls, **mrg)
-        if config['refit_iv']:
-            cv_results[i] = evaluate_model(X, y, **cv_param)
-        prs_results[i] = evaluate_prs(X, y, prs, cores=config['cores'])
+                # Option 3) RM + landscapes ———————————————————————————————————————
+                i = ('3. RM + LS', k, max_week, use_prs)
+                print(i)
+                X = bl.merge(rm_features, **mrg).merge(ls, **mrg)
+                cv_results[i] = evaluate_model(X, y, **cv_param)
 
-        # Option 3: GC only ———————————————————————————————————————————————
-        i = ('4. GC only', k, max_week)
-        print(i)
-        X = bl.merge(rm, **mrg)
-        # Run CV, incorporating growth curves
-        if config['refit_iv']:
-            cv_results[i] = evaluate_model(X, y,
-                                           **cv_param,
-                                           generate_curves=True)
-        prs_results[i] = evaluate_prs(X, y,
-                                      prs,
-                                      cores=config['cores'],
-                                      generate_curves=True)
+                # Option 3: GC only ———————————————————————————————————————————————
+                i = ('4. GC only', k, max_week, use_prs)
+                print(i)
+                X = bl.merge(rm, **mrg)
+                # Run CV, incorporating growth curves
+                cv_results[i] = evaluate_model(X, y,
+                                               **cv_param,
+                                               generate_curves=True)
 
-        # Option 5: GC + landscapes ———————————————————————————————————————
-        i = ('5. GC + LS', k, max_week)
-        print(i)
-        X = bl.merge(rm, **mrg).merge(ls, **mrg)
-        if config['refit_iv']:
-            cv_results[i] = evaluate_model(X, y,
-                                           **cv_param, 
-                                           generate_curves=True)
-        prs_results[i] = evaluate_prs(X, y,
-                                      prs,
-                                      cores=config['cores'],
-                                      generate_curves=True)
+                # Option 5: GC + landscapes ———————————————————————————————————————
+                i = ('5. GC + LS', k, max_week, use_prs)
+                print(i)
+                X = bl.merge(rm, **mrg).merge(ls, **mrg)
+                cv_results[i] = evaluate_model(X, y,
+                                               **cv_param, 
+                                               generate_curves=True)
 
 if config['refit_iv']:
     dump(cv_results, filename=tstamp('cv_results'))
-dump(prs_results, filename=tstamp('prs_results'))
+
+
+# Print the TDA parameters
+
+tda_params = {}
+for k, v in cv_inner.items():
+    tda_params[k] = v.best_params_['topo__kw_args']
+
+pd.DataFrame(tda_params).to_excel('tda_params.xlsx')
 
 #  END
+
+
