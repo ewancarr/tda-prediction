@@ -77,7 +77,7 @@ for o in opts:
     samp[o] = comb.loc[(comb['drug'] == o[1]) &
                        (comb['random'] == o[2]), ].index
 samp[('C', 'both', 'anyrandom')] = comb.index
-dump(samp, filename='samp.joblib')
+dump(samp, filename='data/samp.joblib')
 
 for k, v in samp.items():
     print(k, 'n =', len(v))
