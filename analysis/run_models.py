@@ -320,6 +320,6 @@ tda_params = {}
 for k, v in cv_inner.items():
     tda_params[k] = v.best_params_['topo__kw_args']
 
-pd.DataFrame(tda_params).to_excel('tda_params.xlsx')
+pd.DataFrame(tda_params).to_excel('tables/tda_params.xlsx')
 
 #  END
