@@ -323,5 +323,3 @@ for k, v in cv_inner.items():
 pd.DataFrame(tda_params).to_excel('tda_params.xlsx')
 
 #  END
-
-
