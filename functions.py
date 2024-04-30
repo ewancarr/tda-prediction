@@ -229,11 +229,12 @@ def compute_topological_variables(dat,
     return(X)
 
 
-# Functions needed to genereate growth curves
+# Functions needed to generate growth curves
 
-def fit_growth_curves(X):
+def fit_growth_curves(X, jobs=20):
     import re
     import numpy as np
+    from joblib import Parallel, delayed
     # Identify repeated measures
     pattern = re.compile("^rep__")
     repeated_measures = [bool(pattern.match(i)) for i in list(X)]
@@ -251,8 +252,8 @@ def fit_growth_curves(X):
     outcomes = set([re.search(r"^rep__(.*)__w.*", f).group(1) 
                 for f in X['variable'].unique()])
 
-    random_effects = []
-    for o in outcomes:
+    def fit_lme(X, o):
+        import numpy as np
         df = X[X.variable.str.contains(o)].dropna()
         mdf = smf.mixedlm('value ~ week + np.power(week, 2)',
                           df,
@@ -263,12 +264,13 @@ def fit_growth_curves(X):
             mdf = mdf.fit()
         re = pd.DataFrame(mdf.random_effects).T
         re.columns = [o + i for i in ['_int', '_t', '_t2']]
-        random_effects.append(re)
+        return(re)
+        
+    random_effects = Parallel(n_jobs=jobs)(delayed(fit_lme)(X, o) for o in outcomes)
     # Append all random effects; merge with 'baseline' variables
     return(other.merge(pd.concat(random_effects, axis=1),
-                       left_index=True,
-                       right_index=True))
-
+                left_index=True,
+                right_index=True))
 
 class GenerateGrowthCurves(BaseEstimator, TransformerMixin):
     def __init__(self):
@@ -386,4 +388,9 @@ def check_variables(baseline, replong):
             print(v)
 
     len(table_repeated)
+
+def tstamp(suffix):
+    import datetime
+    return(datetime.datetime.today().strftime('%Y_%m_%d_%H%M%S') +
+             '_' + suffix + '.joblib')
 
