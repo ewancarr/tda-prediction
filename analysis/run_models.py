@@ -129,9 +129,9 @@ for k, v in samp.items():
     print(k, hdremit.loc[v].mean())
 
 # Export data as CSVs for debugging
-baseline.to_csv('baseline.csv')
-outcomes.to_csv('outcomes.csv')
-prs.to_csv('prs.csv')
+baseline.to_csv('data/csv/baseline.csv')
+outcomes.to_csv('data/csv/outcomes.csv')
+prs.to_csv('data/csv/prs.csv')
 
 # ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 # ┃                                                                           ┃
@@ -297,7 +297,6 @@ if config['refit_iv']:
                 i = ('4. GC only', k, max_week, use_prs)
                 print(i)
                 X = bl.merge(rm, **mrg)
-                # Run CV, incorporating growth curves
                 cv_results[i] = evaluate_model(X, y,
                                                **cv_param,
                                                generate_curves=True)
@@ -313,13 +312,10 @@ if config['refit_iv']:
 if config['refit_iv']:
     dump(cv_results, filename=tstamp('cv_results'))
 
-
-# Print the TDA parameters
+# Print the TDA parameters ----------------------------------------------------
 
 tda_params = {}
 for k, v in cv_inner.items():
     tda_params[k] = v.best_params_['topo__kw_args']
 
 pd.DataFrame(tda_params).to_excel('tables/tda_params.xlsx')
-
-#  END

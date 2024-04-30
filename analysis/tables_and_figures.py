@@ -18,7 +18,7 @@ inp = Path('data')
 outcomes = load(inp / 'outcomes.joblib')
 baseline = load(inp / 'baseline.joblib')
 replong, repwide = load(inp / 'repmea.joblib')
-samp = load('samp.joblib')
+samp = load(inp / 'samp.joblib')
 
 def cv_metric(arr, reps=100, squash=False):
     if reps == 0:
@@ -155,3 +155,37 @@ for k, v in cv.items():
     est[k] = v['metrics']
 
 pd.DataFrame(est).transpose().to_csv('metrics.csv')
+
+# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+# ┃                            Feature importance                             ┃
+# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+fi = load('2024_04_30_085129_apparent.joblib')
+
+importance = {}
+for k, v in fi.items():
+    coef = v['coef'].abs().sort_values('coef', ascending=False)
+    selected = coef[coef.coef > 0]
+    top10 = list(selected[:10].index)
+    n_landscape, n_gc, n_other, n_total = 0, 0, 0, 0
+    for feature in list(selected.index):
+        if feature.startswith('X'):
+            n_landscape += 1
+        elif feature.endswith(('_t', '_t2', 'int')):
+            n_gc += 1
+        else:
+            n_other += 1
+        n_total += 1
+    importance[k] = {'n_landscape': n_landscape,
+                     'n_gc': n_gc,
+                     'n_other': n_other,
+                     'n_total': n_total,
+                     'selected': selected,
+                     'top10': top10}
+
+imp = pd.DataFrame.from_dict(importance, orient = 'index')
+labels = ['feat' + str(i + 1) for i in range(10)]
+top10 = pd.DataFrame(imp['top10'].to_list(),
+                     index=imp.index,
+                     columns=labels)
+pd.concat([imp, top10], axis=1).to_excel('feature_importance.xlsx')
