@@ -1,7 +1,7 @@
 # Optimising the prediction of depression remission: A longitudinal machine learning approach
 *Forthcoming in Neuropsychiatric Genetics*
 
-Ewan Carr<sup>1</sup>, Marcella Rietschel<sup>2</sup>, Ole Mors<sup>3</sup>, Neven Henigsberg<sup>4</sup>, Katherine J. Aitchison<sup>5</sup>,<sup>6</sup>,<sup>7</sup>,<sup>8</sup>, Peter McGuffin<sup>9</sup>, Rudolf Uher<sup>10</sup>, Raquel Iniesta<sup>1</sup>,<sup>11</sup>*
+Ewan Carr<sup>1</sup>, Marcella Rietschel<sup>2</sup>, Ole Mors<sup>3</sup>, Neven Henigsberg<sup>4</sup>, Katherine J. Aitchison<sup>5-8</sup>, Peter McGuffin<sup>9</sup>, Rudolf Uher<sup>10</sup>, Raquel Iniesta<sup>1,11</sup>*
 
 <sup>1</sup>Department of Biostatistics & Health Informatics, Institute of Psychiatry, Psychology and Neuroscience (IoPPN), London, United Kingdom.
 <sup>2</sup>Department of Genetic Epidemiology in Psychiatry, Central Institute of Mental Health, Medical Faculty Mannheim, Heidelberg University, 68159 Mannheim, Germany
@@ -15,7 +15,7 @@ Ewan Carr<sup>1</sup>, Marcella Rietschel<sup>2</sup>, Ole Mors<sup>3</sup>, Nev
 <sup>10</sup>Dalhousie University Department of Psychiatry, 5909 Veterans' Memorial Drive, Halifax, B3H 2E2, Nova Scotia, Canada
 <sup>11</sup>King’s Institute for Artificial Intelligence, King’s College London, UK
 
-*Corresponding author.
+<sup>*</sup>Corresponding author.
 
 # Abstract
 
