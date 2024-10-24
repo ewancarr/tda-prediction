@@ -4,11 +4,11 @@
 
 library(tidyverse)
 library(here)
+library(ggrepel)
 
 # Import and tidy metrics from internal validation ----------------------------
 
-f <- here("metrics.csv")
-metrics <- read_csv(f)
+metrics <- read_csv("metrics.csv")
 
 names(metrics)[1:4] <- c("model", "sample", "max_week", "prs")
 
@@ -58,13 +58,22 @@ clean <- clean |>
 # Select the best-performing model for each sample/week -----------------------
 
 plot_data <- clean |>
-  group_by(prs, metric, sample, max_week) |>
+  group_by(metric, sample, max_week) |>
   arrange(sample, metric, max_week, prs) |>
   mutate(best = rank(desc(p50), ties.method = "first") == 1)  |>
   filter(best)
 
 plot_data$sample2 <- str_remove(plot_data$sample, "^[A-C]\\) ")
 
+# Create short label for model type -------------------------------------------
+
+plot_data <- plot_data |>
+  mutate(model_code = case_when(model == "1. Baseline only" ~ "BL",
+                                model == "2. RM only" ~ "LW",
+                                model == "3. RM + LS" ~ "LW+LS",
+                                model == "4. GC only" ~ "GC",
+                                model == "5. GC + LS" ~ "GC+LS"),
+         model_code = paste0(model_code, if_else(prs, "+PRS", "")))
 
 # Figure 1 --------------------------------------------------------------------
 
@@ -75,15 +84,24 @@ plot_data$sample2 <- str_remove(plot_data$sample, "^[A-C]\\) ")
 labels_2dp <- \(x) sprintf("%.2f", x)
 
 p <- plot_data |>
-  filter(!prs) |>
   ggplot() +
   aes(x = max_week,
       y = p50,
       color = sample2) +
   geom_point() +
   geom_line() +
+  coord_cartesian(clip = "off") +
+  geom_text_repel(aes(label = model_code),
+                  show.legend = FALSE,
+                  min.segment.length = 2,
+                  seed = 42,
+                  box.padding = 0.5,
+                  xlim = c(-Inf, Inf),
+                  ylim = c(-Inf, Inf),
+                  family = "Arial",
+                  size = 3) +
   facet_wrap(~ metric) +
-  theme_minimal(base_family = "Times New Roman") +
+  theme_minimal(base_family = "Arial") +
   scale_color_brewer(type = "qual", palette = "Set2") +
   scale_y_continuous(labels = labels_2dp) +
   theme(axis.title.y = element_blank(),
@@ -91,13 +109,11 @@ p <- plot_data |>
         strip.text = element_text(size = 12)) +
   labs(x = "Weeks of repeated measures",
        color = "Sample")
-
-
-
+p
 ggsave(p,
        file = here("figures", "figure1.png"),
-       width = 7,
-       height = 4,
+       width = 8,
+       height = 6,
        dpi = 300,
        bg = "white")
 
@@ -109,6 +125,50 @@ plot_data |>
   mutate(p50 = sprintf("%.3f", p50)) |>
   pivot_wider(names_from = max_week, values_from = p50) |>
   writexl::write_xlsx(here("figures", "below_figure1.xlsx"))
+
+# Alternative version of Figure 1 that includes uncertainty intervals ---------
+
+plot_data <- plot_data |>
+  mutate(nudge = case_when(str_starts(sample, coll("A)")) ~ -0.2,
+                           str_starts(sample, coll("B)")) ~ 0.2,
+                           str_starts(sample, coll("C)")) ~ 0))
+
+p_alt <- plot_data |>
+  ggplot() +
+  aes(x = max_week + nudge,
+      y = p50,
+      ymin = p2,
+      ymax = p98,
+      color = sample2) +
+  geom_pointrange() +
+  geom_line() +
+  coord_cartesian(ylim = c(0.5, 0.9),
+                  clip = "off") +
+  geom_text_repel(aes(label = model_code),
+                  show.legend = FALSE,
+                  min.segment.length = 2,
+                  seed = 42,
+                  box.padding = 0.5,
+                  xlim = c(-Inf, Inf),
+                  ylim = c(-Inf, Inf),
+                  family = "Arial",
+                  size = 3) +
+  facet_wrap(~ metric) +
+  theme_minimal(base_family = "Arial") +
+  scale_color_brewer(type = "qual", palette = "Set2") +
+  scale_y_continuous(labels = labels_2dp) +
+  theme(axis.title.y = element_blank(),
+        legend.text = element_text(size = 12),
+        strip.text = element_text(size = 12)) +
+  labs(x = "Weeks of repeated measures",
+       color = "Sample")
+p_alt
+ggsave(p_alt,
+       file = here("figures", "figure1_alt.png"),
+       width = 8,
+       height = 10,
+       dpi = 300,
+       bg = "white")
 
 # Table: Best results by sample/week ------------------------------------------
 
@@ -126,16 +186,17 @@ plot_data |>
 
 perf <- clean |>
   mutate(cell = dp(p50),
+         cell_ci = str_glue("{dp(p50)}\n[{dp(p2)}, {dp(p98)}]"),
          metric = factor(metric,
                          levels = c("AUC", "NPV",
                                     "Sensitivity",
                                     "Specificity"))) |>
-  select(sample, model, max_week, prs, metric, cell) |>
+  select(sample, model, max_week, prs, metric, cell_ci) |>
   distinct(sample, model, max_week, prs, metric, .keep_all = TRUE)
 
 perf <- perf |>
   pivot_wider(names_from = c(metric, prs),
-              values_from = cell,
+              values_from = cell_ci,
               names_sort = TRUE) |>
   arrange(sample, max_week, model)
 
@@ -213,4 +274,3 @@ ggsave(p_missing,
        height = 8,
        dpi = 300,
        bg = "white")
-

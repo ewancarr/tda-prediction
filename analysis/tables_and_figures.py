@@ -59,12 +59,20 @@ for k, v in samp.items():
     pooled.append(d)
 pooled = pd.concat(pooled)
 pooled = pooled.merge(outcomes, left_index=True, right_index=True, how='left')
+pooled = pd.get_dummies(pooled, columns=['nchild'])
 
 l1 = 'Mean (SD) [No. missing]'
 l2 = '% (n) [No. missing]'
 labels = {'age': ('Age¹', l1),
           'ageonset': ('Age at onset¹', l1),
           'female': ('Female gender²',  l2),
+          'occup01': ('occup01²', l2),
+          'part01': ('Married or cohabiting²', l2),
+          'nchild_0': ('No children', l2),
+          'nchild_1': ('1 child', l2),
+          'nchild_2': ('2 children', l2),
+          'nchild_3': ('3+ children', l2),
+          'educ': ('Years of education¹', l1),
           'bmi': ('Body Mass Index (BMI)¹', l1),
           'madrs': ('Montgomery-Åsberg Depression Rating Scale (MADRS) score at baseline¹', l1),
           'hdrs': ('Hamilton Depression Rating Scale-17 item score at baseline¹', l1),
@@ -79,6 +87,7 @@ labels = {'age': ('Age¹', l1),
           'evertca': ('History of Tricyclic antidepressant²', l2),
           'everdual': ('History of taking SNRI antidepressants²', l2),
           'remit':  ('Remission²', l2)}
+
 req = list()
 for k, v in labels.items():
     req.append(k)
@@ -115,6 +124,7 @@ table1.columns = [f'A (n={s_a})',
                   f'C (n={s_c})',
                   'Label',
                   'Measure']
+
 table1 = table1.iloc[:, [3, 4, 0, 1, 2]]
 table1.to_excel('tables/table1.xlsx')
 
@@ -132,6 +142,7 @@ for k, v in samp.items():
 cv = load('saved/final/2023_08_23_194541_cv_results.joblib')
 
 n_reps = 20
+
 for k1, v1 in cv.items():
     est = {}
     for k2, v2 in v1['cv'].items():
@@ -171,7 +182,7 @@ for k, v in fi.items():
     for feature in list(selected.index):
         if feature.startswith('X'):
             n_landscape += 1
-        elif feature.endswith(('_t', '_t2', 'int')):
+        elif any(feature in x for x in ['_t__', '_t2__', '_int__']):
             n_gc += 1
         else:
             n_other += 1
@@ -189,3 +200,10 @@ top10 = pd.DataFrame(imp['top10'].to_list(),
                      index=imp.index,
                      columns=labels)
 pd.concat([imp, top10], axis=1).to_excel('feature_importance.xlsx')
+
+# Extract feature importances for every feature
+
+all_coefficients = [v['coef'] for k, v in fi.items()]
+all_coefficients = pd.concat(all_coefficients, axis=1, ignore_index=False)
+all_coefficients.columns = fi.keys()
+all_coefficients.to_excel('all_coefficients.xlsx')

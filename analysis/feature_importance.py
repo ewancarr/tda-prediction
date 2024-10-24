@@ -83,7 +83,7 @@ def do_transform(X, f):
                         index=X.index,
                         columns=X.columns))
 
-def manual_pipe(X, y, growth_curves=False):
+def manual_pipe(X, y, w, growth_curves=False):
     # This is a rewrite of the Pipeline used elsewhere. It's needed so that we
     # can extract feature names (and therefore importances).
     names_input = list(X)
@@ -92,7 +92,7 @@ def manual_pipe(X, y, growth_curves=False):
     X = do_transform(X, knn)
     # Step 2: Growth curves (optionally)
     if growth_curves:
-        X = fit_growth_curves(X)
+        X = fit_growth_curves(X, w)
     # Step 3: Zero variance
     names_zv = X.columns[np.var(X) > 0.0]
     X = X[names_zv]
@@ -151,27 +151,26 @@ for k, v in samp.items():
             i = ('1. Baseline only', k, max_week, use_prs)
             print(i)
             X = bl.copy()
-            apparent[i] = manual_pipe(X, y)
+            apparent[i] = manual_pipe(X, y, w=max_week)
             # Option 2) RM only ———————————————————————————————————————————————
             i = ('2. RM only', k, max_week, use_prs)
             print(i)
             X = bl.merge(rm_features, **mrg)
-            apparent[i] = manual_pipe(X, y)
+            apparent[i] = manual_pipe(X, y, w=max_week)
             # Option 3) RM + landscapes ———————————————————————————————————————
             i = ('3. RM + LS', k, max_week, use_prs)
             print(i)
             X = bl.merge(rm_features, **mrg).merge(ls, **mrg)
-            apparent[i] = manual_pipe(X, y)
+            apparent[i] = manual_pipe(X, y, w=max_week)
             # Option 3: GC only ———————————————————————————————————————————————
             i = ('4. GC only', k, max_week, use_prs)
             print(i)
             X = bl.merge(rm, **mrg)
-            apparent[i] = manual_pipe(X, y, growth_curves=True)
+            apparent[i] = manual_pipe(X, y, w=max_week, growth_curves=True)
             # Option 5: GC + landscapes ———————————————————————————————————————
             i = ('5. GC + LS', k, max_week, use_prs)
             print(i)
             X = bl.merge(rm, **mrg).merge(ls, **mrg)
-            apparent[i] = manual_pipe(X, y, growth_curves=True)
-
+            apparent[i] = manual_pipe(X, y, w=max_week, growth_curves=True)
 
 dump(apparent, filename=tstamp('apparent'))

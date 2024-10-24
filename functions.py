@@ -231,27 +231,23 @@ def compute_topological_variables(dat,
 
 # Functions needed to generate growth curves
 
-def fit_growth_curves(X, jobs=20):
+def fit_growth_curves(X, w, jobs=20):
     import re
     import numpy as np
     from joblib import Parallel, delayed
     # Identify repeated measures
     pattern = re.compile("^rep__")
     repeated_measures = [bool(pattern.match(i)) for i in list(X)]
-
     # Separate baseline vs. repeated measures columns
     other = X.loc[:, [not i for i in repeated_measures]]
     X = X.loc[:, repeated_measures]
-
     # Select repeated measures, reshape to LONG format
     X = X.melt(ignore_index=False)
     X['week'] = X['variable'].str[-1:].astype('int')
     X.reset_index(inplace=True)
-
     # For each outcome, fit a growth curve
     outcomes = set([re.search(r"^rep__(.*)__w.*", f).group(1) 
                 for f in X['variable'].unique()])
-
     def fit_lme(X, o):
         import numpy as np
         df = X[X.variable.str.contains(o)].dropna()
@@ -265,8 +261,9 @@ def fit_growth_curves(X, jobs=20):
         re = pd.DataFrame(mdf.random_effects).T
         re.columns = [o + i for i in ['_int', '_t', '_t2']]
         return(re)
-        
     random_effects = Parallel(n_jobs=jobs)(delayed(fit_lme)(X, o) for o in outcomes)
+    # Add suffix to indicate max_week setting
+    random_effects = [o.add_suffix('__w' + str(w)) for o in random_effects]
     # Append all random effects; merge with 'baseline' variables
     return(other.merge(pd.concat(random_effects, axis=1),
                 left_index=True,
